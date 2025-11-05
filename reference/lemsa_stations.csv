@@ -1,0 +1,13 @@
+station_id,station_number,station_name,role,address,phone,latitude,longitude,source_url
+LEMSA-06-1,06-1,LEMSA - East Lampeter,Station,"1829 Lincoln Highway E, Lancaster, PA",,40.0357024,-76.2542574,County PDF
+LEMSA-06-2,06-2,LEMSA - Millersville,Station,"237 N George Street, Millersville, PA",,40.0023568,-76.3563938,County PDF
+LEMSA-06-5,06-5,LEMSA - HQ,Station,"715 Fairview Avenue, Lancaster, PA",,40.0240455,-76.3069227,County PDF
+LEMSA-06-7,06-7,LEMSA - E Frederick Street,Station,"110 E Frederick Street, Lancaster, PA",,40.0479392,-76.3050954,County PDF
+LEMSA-06-8,06-8,LEMSA - F&M,Station,"625 College Avenue, Lancaster, PA",,40.0468930,-76.3183685,County PDF
+LEMSA-56-2,56-2,LEMSA - Buchmiller,Station,"60 Buchmiller Park Drive, Lancaster, PA",,40.0147590,-76.3021430,County PDF
+LEMSA-56-3,56-3,LEMSA - Herrville,Station,"14 Herrville Road, Willow Street, PA",,,,County PDF
+LEMSA-56-5,56-5,LEMSA - Quarryville,Station,"325 Park Avenue, Quarryville, PA",,39.8920146,-76.1581489,County PDF
+LEMSA-56-6,56-6,LEMSA - Strasburg,Station,"20 Lancaster Avenue, Strasburg, PA",,39.9833958,-76.1856476,County PDF
+LEMSA-56-7,56-7,LEMSA - Lampeter,Station,"851 Village Road, Lancaster, PA",,39.9904180,-76.2436432,County PDF
+LEMSA-56-8,56-8,LEMSA - New Danville,Station,"43 Marticville Road, Lancaster, PA",,39.9851745,-76.3140373,County PDF
+LEMSA-56-9,56-9,LEMSA - Conestoga,Station,"3292 Main Street, Conestoga, PA",,39.9416709,-76.3431935,County PDF

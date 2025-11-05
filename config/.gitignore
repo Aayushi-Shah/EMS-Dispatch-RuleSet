@@ -1,0 +1,19 @@
+# env
+.env
+
+# data
+/data/raw/*
+!/data/raw/.keep
+/data/interim/*
+!/data/interim/.keep
+/data/processed/*
+!/data/processed/.keep
+
+# reports (keep text, ignore large)
+*.parquet
+*.feather
+*.arrow
+*.log
+
+# notebooks
+.ipynb_checkpoints/

@@ -1,0 +1,79 @@
+# ------------------------------
+# Python / Environment
+# ------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+*.pdb
+
+# Virtual environments
+.venv/
+venv/
+env/
+ems-env/
+env.bak/
+venv.bak/
+
+# Jupyter & notebooks
+.ipynb_checkpoints/
+*.ipynb_tmp
+*.ipynb_checkpoint
+
+# ------------------------------
+# OS / Editor files
+# ------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.log
+
+# ------------------------------
+# Project data / outputs
+# ------------------------------
+data/raw/
+data/interim/
+data/processed/
+!data/processed/.gitkeep
+
+reference/tmp/
+scratch/
+output/
+reports/*.txt
+reports/*.csv
+reports/*.parquet
+reports/*.html
+reports/*.log
+
+# ------------------------------
+# Environment & config overrides
+# ------------------------------
+.env
+.env.*
+*.ini
+*.yaml
+*.yml
+*.toml
+
+# ------------------------------
+# Cache / build artifacts
+# ------------------------------
+*.egg-info/
+dist/
+build/
+.cache/
+.pytest_cache/
+coverage/
+htmlcov/
+
+# ------------------------------
+# IDE
+# ------------------------------
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-workspace
+*.sublime-project
