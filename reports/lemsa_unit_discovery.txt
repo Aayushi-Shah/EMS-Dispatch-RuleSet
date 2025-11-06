@@ -1,0 +1,131 @@
+LEMSA Unit Discovery Report
+============================================================
+
+Manual units: 16
+Discovered LEMSA units (from CAD): 89
+Overlap (in both): 15
+
+============================================================
+POTENTIALLY MISSING LEMSA UNITS (in CAD, not in manual)
+Count: 74
+============================================================
+
+Unit Designator          | Calls
+------------------------------------------------------------
+AMB 06-8                 |  3,452
+AMB 06-1                 |  2,903
+MEDIC 06-7               |  2,229
+06-1                     |  1,856
+MEDIC 06-1               |  1,830
+06-8                     |  1,770
+AMB 06-22                |    662
+AMB 56-1                 |    645
+AMB 06-21                |    603
+MEDIC 06-2               |    423
+06-7                     |    415
+MEDIC 56-10              |    359
+AMB 06-71                |    325
+AMB 06-3                 |    318
+AMB 06-12                |    283
+MICU 06-3                |    269
+AMB 06-23                |    249
+MICU 56-1                |    248
+MEDIC 56-60              |    247
+MICU 56-5                |    225
+AMB 56-6                 |    175
+06-3                     |    173
+MEDIC 56-40              |    155
+06-2                     |    149
+AMB 06-81                |    120
+MICU 06-9                |     87
+MICU 56-6                |     76
+56-6                     |     68
+MICU 56-4                |     60
+06-5                     |     51
+56-1                     |     49
+AMB 06-9                 |     38
+AMB 56-5                 |     35
+MEDIC 06-11              |     33
+AMB 56-4                 |     31
+06-9                     |     23
+MEDIC 56-50              |     17
+MEDIC 06-71              |     17
+56-4                     |     15
+MEDIC 56-11              |     14
+56-5                     |     13
+MEDIC 06-31              |     12
+AMB 06-51                |      9
+06-71                    |      9
+MEDIC 06-30              |      8
+06-81                    |      7
+AMB 06-31                |      6
+06-11                    |      6
+56-11                    |      5
+AMB 56-51                |      4
+MEDIC 06-91              |      4
+06-23                    |      3
+MEDIC 56-2               |      3
+06-4                     |      2
+MEDIC 06-70              |      2
+MEDIC 56-51              |      2
+56-2                     |      2
+MEDIC 06-80              |      2
+AMB 56-61                |      2
+56-9                     |      1
+AMB 56-3                 |      1
+06-80                    |      1
+AMB 06-82                |      1
+MEDIC 56-3               |      1
+56-8                     |      1
+MEDIC 56-9               |      1
+06-31                    |      1
+MICU 56-12               |      1
+56-51                    |      1
+06-6                     |      1
+AMB 06-91                |      1
+56-60                    |      1
+AMB 56-11                |      1
+MEDIC 56-8               |      1
+
+============================================================
+MANUAL UNITS NOT SEEN IN CAD (low activity or retired?)
+Count: 1
+============================================================
+
+Unit Designator          | Notes
+------------------------------------------------------------
+SUPPORT 06-5             | Mass Casualty Incident Trailer
+SUPPORT 06-5             | Special Response Trailer
+SUPPORT 06-5             | Maintenance Vehicle
+SUPPORT 06-5             | Reserve Units
+
+============================================================
+MUTUAL AID UNITS (responding in LEMSA coverage)
+Total unique mutual aid units: 392
+Total mutual aid responses: 19,857
+============================================================
+
+Top mutual aid units:
+
+Unit Designator          | Calls | Station
+------------------------------------------------------------
+MEDIC 82-1               |  1,970 | 82
+MEDIC 77-4               |    884 | 77
+AMB 88-1                 |    651 | 88
+88-1                     |    497 | 88
+MICU 82-1                |    376 | 82
+64-1                     |    374 | 64
+64-3                     |    346 | 64
+MEDIC 82-2               |    343 | 82
+MEDIC 82-3               |    337 | 82
+82-2                     |    320 | 82
+MICU 77-6                |    314 | 77
+77-4                     |    297 | 77
+MICU 77-4                |    294 | 77
+AMB 82-2                 |    292 | 82
+01-1                     |    287 | 01
+MICU 77-8                |    285 | 77
+MEDIC 77-6               |    273 | 77
+AMB 43-1                 |    253 | 43
+AMB 37-8                 |    247 | 37
+AMB 77-4                 |    245 | 77

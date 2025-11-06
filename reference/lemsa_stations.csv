@@ -1,13 +1,13 @@
-station_id,station_number,station_name,role,address,phone,latitude,longitude,source_url
-LEMSA-06-1,06-1,LEMSA - East Lampeter,Station,"1829 Lincoln Highway E, Lancaster, PA",,40.0357024,-76.2542574,County PDF
-LEMSA-06-2,06-2,LEMSA - Millersville,Station,"237 N George Street, Millersville, PA",,40.0023568,-76.3563938,County PDF
-LEMSA-06-5,06-5,LEMSA - HQ,Station,"715 Fairview Avenue, Lancaster, PA",,40.0240455,-76.3069227,County PDF
-LEMSA-06-7,06-7,LEMSA - E Frederick Street,Station,"110 E Frederick Street, Lancaster, PA",,40.0479392,-76.3050954,County PDF
-LEMSA-06-8,06-8,LEMSA - F&M,Station,"625 College Avenue, Lancaster, PA",,40.0468930,-76.3183685,County PDF
-LEMSA-56-2,56-2,LEMSA - Buchmiller,Station,"60 Buchmiller Park Drive, Lancaster, PA",,40.0147590,-76.3021430,County PDF
-LEMSA-56-3,56-3,LEMSA - Herrville,Station,"14 Herrville Road, Willow Street, PA",,,,County PDF
-LEMSA-56-5,56-5,LEMSA - Quarryville,Station,"325 Park Avenue, Quarryville, PA",,39.8920146,-76.1581489,County PDF
-LEMSA-56-6,56-6,LEMSA - Strasburg,Station,"20 Lancaster Avenue, Strasburg, PA",,39.9833958,-76.1856476,County PDF
-LEMSA-56-7,56-7,LEMSA - Lampeter,Station,"851 Village Road, Lancaster, PA",,39.9904180,-76.2436432,County PDF
-LEMSA-56-8,56-8,LEMSA - New Danville,Station,"43 Marticville Road, Lancaster, PA",,39.9851745,-76.3140373,County PDF
-LEMSA-56-9,56-9,LEMSA - Conestoga,Station,"3292 Main Street, Conestoga, PA",,39.9416709,-76.3431935,County PDF
+station_number,station_name,address,city,state,zip,lat,lon
+06-1,East Station,1829 Lincoln Highway E,Lancaster,PA,17602,40.03576920430254,-76.25433641842815
+06-7,LGH Station,555 N Duke St,Lancaster,PA,17603,40.04714417759513,-76.30438198270724
+06-9,WBH Station,690 Good Dr,Lancaster,PA,17603,40.06538678948616,-76.3511851607547
+06-3,Columbia Ave Station,2650 Columbia Ave,Lancaster,PA,17603,40.04033860807688,-76.37979500308371
+06-2,George St Station,239 N George St,Millersville,PA,17551,40.00252495941176,-76.35648418774129
+06-8,Lancaster Township FD Station,1275 Millersville Pike,Lancaster,PA,17603,40.02744881187077,-76.32781914541216
+06-5,Headquaters,715 Fairview Avenue,Lancaster,PA,17603,40.024363672488704,-76.30677061657629
+56-6,Strasburg Station,20 Lancaster Avenue,Strasburg,PA,17579,39.983812206707675,-76.18568937425025
+56-1,Willow Valley Station,450 Willow Valley Lakes Dr,Willow Street,PA,17584,39.98543448206992,-76.27491224541403
+56-9,Conestoga Station,3292 Main Street,Conestoga,PA,17516,39.94105216296149,-76.34425561843241
+56-4,Buck Station,897 Lancaster Pike,Quarryville,PA,17566,39.881874598057095,-76.23041158959896
+56-5,Quarryville Station,325 Park Avenue,Quarryville,PA,17566,39.89101937719157,-76.1579787761068
