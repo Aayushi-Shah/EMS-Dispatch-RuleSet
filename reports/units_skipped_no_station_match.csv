@@ -1,0 +1,45 @@
+unit_designator,extracted_station,calls,station_exists
+AMB 06-22,06-22,662,False
+AMB 06-21,06-21,603,False
+MEDIC 56-10,56-10,359,False
+AMB 06-71,06-71,325,False
+AMB 06-12,06-12,283,False
+AMB 06-23,06-23,249,False
+MEDIC 56-60,56-60,247,False
+MEDIC 56-40,56-40,155,False
+AMB 06-81,06-81,120,False
+MEDIC 06-11,06-11,33,False
+MEDIC 06-71,06-71,17,False
+MEDIC 56-50,56-50,17,False
+MEDIC 56-11,56-11,14,False
+MEDIC 06-31,06-31,12,False
+AMB 06-51,06-51,9,False
+06-71,06-71,9,False
+MEDIC 06-30,06-30,8,False
+06-81,06-81,7,False
+AMB 06-31,06-31,6,False
+06-11,06-11,6,False
+56-11,56-11,5,False
+MEDIC 06-91,06-91,4,False
+AMB 56-51,56-51,4,False
+MEDIC 56-2,56-2,3,False
+06-23,06-23,3,False
+06-4,06-4,2,False
+MEDIC 06-70,06-70,2,False
+MEDIC 56-51,56-51,2,False
+56-2,56-2,2,False
+MEDIC 06-80,06-80,2,False
+AMB 56-61,56-61,2,False
+MICU 56-12,56-12,1,False
+AMB 56-11,56-11,1,False
+56-60,56-60,1,False
+AMB 06-91,06-91,1,False
+06-6,06-6,1,False
+56-51,56-51,1,False
+AMB 06-82,06-82,1,False
+06-31,06-31,1,False
+56-8,56-8,1,False
+MEDIC 56-3,56-3,1,False
+06-80,06-80,1,False
+AMB 56-3,56-3,1,False
+MEDIC 56-8,56-8,1,False
