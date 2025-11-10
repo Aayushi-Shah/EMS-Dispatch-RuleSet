@@ -51,4 +51,8 @@ class Settings:
 
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
+    # paths
+    DUTY_CSV = Path("reference/lemsa_unit_duty.csv")  # new
+    DUTY_ENFORCEMENT = True                           # new
+
 settings = Settings()

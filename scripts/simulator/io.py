@@ -85,6 +85,36 @@ def which_shift(min_in_day: int) -> int:
             return i
     return len(config.SHIFT_WINDOWS) - 1
 
+def load_unit_duty() -> dict[str, list[tuple[set[int], int, int]]]:
+    """
+    Returns: { UNIT -> [ (days_set, start_min, end_min), ... ] }
+    """
+    try:
+        df = pd.read_csv(config.DUTY_CSV)
+    except FileNotFoundError:
+        return {}  # no enforcement if file missing
+
+    need = {"unit_designator","day","window_start_min","window_end_min"}
+    if not need.issubset({c.lower() for c in df.columns}):
+        # be tolerant to case
+        cols = {c.lower(): c for c in df.columns}
+        df = df.rename(columns={cols.get("unit_designator","unit_designator"): "unit_designator",
+                                cols.get("day","day"): "day",
+                                cols.get("window_start_min","window_start_min"): "window_start_min",
+                                cols.get("window_end_min","window_end_min"): "window_end_min"})
+    duty: dict[str, list[tuple[set[int], int, int]]] = {}
+    for _, r in df.iterrows():
+        u = str(r["unit_designator"]).upper()
+        day = str(r["day"]).strip().lower()
+        if day == "all":
+            days = set(range(7))
+        else:
+            # allow comma list like "0,1,2"
+            days = set(int(d) for d in str(day).split(","))
+        s = int(r["window_start_min"]); e = int(r["window_end_min"])
+        duty.setdefault(u, []).append((days, s, e))
+    return duty
+
 def segment_calls_by_shift(calls: list[dict]):
     groups: dict[str, list[dict]] = {}
     seg_start_abs: dict[str, float] = {}

@@ -1,0 +1,11 @@
+unit_designator,day,window_start_min,window_end_min
+MICU 88-1,all,0,1440
+MICU 88-2,all,0,1440
+BLS 21,0,480,960
+BLS 21,1,480,960
+BLS 21,2,480,960
+BLS 21,3,480,960
+BLS 21,4,480,960
+BLS 21,5,600,1080
+BLS 21,6,600,1080
+QRV 7,all,960,1440

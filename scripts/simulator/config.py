@@ -74,3 +74,16 @@ BOTTLENECKS = [
 
 # Small multiplicative noise on computed minutes to avoid ties; set 0 to disable
 TT_NOISE_SIGMA = 0.05
+
+# ---- Hospital turnaround (heuristic) ----
+# Hour-of-day multipliers (0..23). Tweak later when you have real ED data.
+TA_HOURLY = {
+    0:1.00, 1:1.00, 2:1.00, 3:1.00, 4:1.00, 5:1.05,
+    6:1.10, 7:1.15, 8:1.20, 9:1.20,10:1.15,11:1.10,
+    12:1.10,13:1.10,14:1.15,15:1.20,16:1.25,17:1.30,
+    18:1.25,19:1.20,20:1.15,21:1.10,22:1.05,23:1.00,
+}
+# Sensitivity to ED load (0..1). Keep small until calibrated.
+TA_ALPHA = 0.10
+# Lookback window if you later compute rolling ED load (minutes). Not used yet.
+TA_LOOKBACK_MIN = 90

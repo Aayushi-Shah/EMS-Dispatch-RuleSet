@@ -1,34 +1,21 @@
-# scripts/simulator/policies.py
-from __future__ import annotations
-from typing import Tuple, Optional, List
-from .des import Unit
+# scripts/simulator/policies.py (update)
 from . import config, traffic
+import math
 
-def nearest_unit_policy(units: List[Unit], sim_t_min: float, call: dict) -> Tuple[Optional[Unit], float]:
-    """
-    Pick the unit with the minimum *heuristic travel time* to the call.
-    Returns (unit, resp_minutes). Adds dispatch delay.
-    """
-    if not units:
-        return None, float("inf")
-
-    # absolute epoch "now" for this event
-    abs_now = float(call["_abs_epoch_start"]) + float(sim_t_min) * 60.0
-
-    best_u = None
-    best_minutes = float("inf")
+def nearest_unit_policy(units, now_min, call):
+    best = None
+    best_resp = float("inf")
+    abs_now = call["_abs_epoch_start"] + now_min*60.0
 
     for u in units:
-        if u.busy_until > sim_t_min:
-            continue
-        tmin = traffic.travel_minutes(
+        if getattr(u, "can_dispatch", True) is False:
+            continue  # off-duty for dispatch purposes
+        # travel to scene via heuristic
+        t_to_scene = config.DISPATCH_DELAY_MIN + traffic.travel_minutes(
             u.lon, u.lat, call["lon"], call["lat"],
             config.SCENE_SPEED_MPH, abs_now
         )
-        tmin += config.DISPATCH_DELAY_MIN  # tone-out + call processing
-
-        if tmin < best_minutes:
-            best_minutes = tmin
-            best_u = u
-
-    return best_u, best_minutes
+        if t_to_scene < best_resp:
+            best_resp = t_to_scene
+            best = u
+    return best, best_resp if best is not None else (None, None)
