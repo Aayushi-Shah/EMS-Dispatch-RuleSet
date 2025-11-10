@@ -8,10 +8,13 @@ import pandas as pd
 
 from . import config, traffic
 from .des import DES, Unit
-from .policies import nearest_unit_policy
 from .io import load_calls, load_units, segment_calls_by_shift, load_unit_duty
 from .kpis import weighted_aggregate
 from .logging_utils import new_run_id, write_artifacts
+
+from .geo import load_boundary
+from .io import tag_calls_in_bounds, filter_units_in_bounds
+from .policies import select_policy
 
 
 # ---------- small local diag helpers ----------
@@ -49,13 +52,14 @@ def _is_unit_active_this_segment(
     rules = duty_map.get(unit_name.upper())
     if not rules:
         return True
+    # day-of-week at segment start (0=Mon..6=Sun)
     dow = datetime.fromtimestamp(seg_start_abs, tz=timezone.utc).weekday()
+    # segment window in minutes [start,end)
     sidx = int(seg_key.split("_S")[-1])
     seg_start_min, seg_end_min = config.SHIFT_WINDOWS[sidx]
     for days, w_start, w_end in rules:
-        if dow in days:
-            if not (w_end <= seg_start_min or w_start >= seg_end_min):
-                return True
+        if dow in days and not (w_end <= seg_start_min or w_start >= seg_end_min):
+            return True
     return False
 
 
@@ -65,12 +69,18 @@ def run_one_segment(
     seg_start_abs_map: dict[str, float],
     seg_key: str,
     duty_map: dict[str, list[tuple[list[int], int, int]]] | None = None,
+    policy_fn=None,
+    policy_kwargs: dict | None = None,
 ) -> tuple[dict, dict]:
     """Run one shift segment and return (row_kpis, updated_unit_state)."""
     traffic.reset_stats()
-    sim = DES(select_unit_fn=nearest_unit_policy)
-    new_units: list[Unit] = []
+    policy_kwargs = policy_kwargs or {}
 
+    # DES expects a callable: (units, now_min, call) -> (unit, resp_minutes, debug_dict)
+    sim = DES(select_unit_fn=(lambda units, now, call: policy_fn(units, now, call, **policy_kwargs))
+              if policy_fn else None)
+
+    new_units: list[Unit] = []
     seg_start_abs = float(seg_start_abs_map[seg_key])
     duty_map = duty_map or {}
 
@@ -87,7 +97,7 @@ def run_one_segment(
             lon=lon, lat=lat,
             station_lon=s["station_lon"], station_lat=s["station_lat"],
             busy_until=(remaining_min if remaining_min > 0 else 0.0),
-            can_dispatch=can_dispatch  # requires Unit has this field
+            can_dispatch=can_dispatch
         )
         new_units.append(u)
         sim.add_unit(u)
@@ -139,6 +149,7 @@ def run_one_segment(
         "avg_zone_mult": tstats["avg_zone_mult"],
     })
 
+    # expose for caller to pick up hourly turnaround buckets etc.
     run_one_segment._last_metrics = sim.metrics
     return row, updated_state
 
@@ -171,7 +182,14 @@ def main():
     units = load_units()
     duty_map = load_unit_duty() if getattr(config, "DUTY_ENFORCEMENT", False) else {}
 
-    # One segmentation
+    # Boundary filter (optional)
+    boundary = load_boundary(getattr(config, "BOUNDARY_GEOJSONS", None) or
+                         getattr(config, "BOUNDARY_GEOJSON", None))
+    calls = tag_calls_in_bounds(calls, boundary)
+    calls = [c for c in calls if c.get("in_bounds", True)]
+    units = filter_units_in_bounds(units, boundary)
+
+    # Segmentation
     groups, seg_start_abs = segment_calls_by_shift(calls)
 
     # Quick config print + naive diagnostics
@@ -196,12 +214,22 @@ def main():
             est_p90 = 60.0 * np.percentile(dists, 90) / max(config.SCENE_SPEED_MPH, 1e-6)
             print(f"[DIAG] naive resp est p50={est_p50:.2f} min p90={est_p90:.2f} min")
 
+    # Select policy
+    policy_name = getattr(config, "POLICY_NAME", "NearestETA")
+    policy_kwargs = dict(getattr(config, "POLICY_KWARGS", {}))
+    policy_fn = select_policy(policy_name)
+
     # Run all segments once
     unit_state = _build_initial_unit_state(units)
     rows = []
     ta_hourly_accum = []
     for key, seg in sorted(groups.items()):
-        row, unit_state = run_one_segment(seg, unit_state, seg_start_abs, key, duty_map=duty_map)
+        row, unit_state = run_one_segment(
+            seg, unit_state, seg_start_abs, key,
+            duty_map=duty_map,
+            policy_fn=policy_fn,
+            policy_kwargs=policy_kwargs,
+        )
         row["segment"] = key
         rows.append(row)
         ta_hourly_accum.extend(_hourly_ta_rows_from_sim(run_one_segment._last_metrics, key))
@@ -210,7 +238,7 @@ def main():
     # Aggregate KPIs
     summary_df = weighted_aggregate(per_shift_df, units_count=len(units))
 
-    # Create run id BEFORE any run-scoped file writes
+    # Create run id BEFORE any run-scoped writes
     run_id = new_run_id()
 
     # ---- Hourly turnaround CSV ----
@@ -244,6 +272,8 @@ def main():
             "ZONE_MULTIPLIER": getattr(config, "ZONE_MULTIPLIER", {}),
             "TT_NOISE_SIGMA": getattr(config, "TT_NOISE_SIGMA", 0.0),
             "DUTY_ENFORCEMENT": getattr(config, "DUTY_ENFORCEMENT", False),
+            "POLICY_NAME": policy_name,
+            "POLICY_KWARGS": policy_kwargs,
         },
         "inputs": {
             "CALLS_PARQUET": str(config.CALLS_PARQUET),

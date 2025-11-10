@@ -87,3 +87,11 @@ TA_HOURLY = {
 TA_ALPHA = 0.10
 # Lookback window if you later compute rolling ED load (minutes). Not used yet.
 TA_LOOKBACK_MIN = 90
+
+BOUNDARY_GEOJSONS = [
+    "reference/lemsa_als_boundary.geojson",
+    "reference/lemsa_bls_boundary.geojson",
+    "reference/lemsa_overlap_boundary.geojson",
+]
+POLICY_NAME = "NearestETA"  # or "StationBiasETA", "MaxRadiusCap"
+POLICY_KWARGS = {"penalty_min": 2.0}  # or {"max_mi": 12.0}

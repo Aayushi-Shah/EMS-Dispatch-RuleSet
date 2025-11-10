@@ -2,6 +2,8 @@ from __future__ import annotations
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 from . import config
+from typing import List, Dict
+from .geo import in_any_polygon
 
 def _pick_time_col(df: pd.DataFrame):
     for c in config.TIME_COL_CANDIDATES:
@@ -139,3 +141,21 @@ def segment_calls_by_shift(calls: list[dict]):
             c["tmin"] = (float(c["_abs_epoch"]) - t0) / 60.0
 
     return groups, seg_start_abs
+
+def tag_calls_in_bounds(calls: List[Dict], geoms) -> List[Dict]:
+    if not geoms:
+        for c in calls: c["in_bounds"] = True
+        return calls
+    for c in calls:
+        c["in_bounds"] = in_any_polygon(c["lon"], c["lat"], geoms)
+    return calls
+
+def filter_units_in_bounds(units, geoms):
+    if not geoms:
+        return units
+    keep = []
+    from .geo import in_any_polygon
+    for u in units:
+        if in_any_polygon(u.station_lon, u.station_lat, geoms):
+            keep.append(u)
+    return keep
