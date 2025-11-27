@@ -2,7 +2,7 @@
 from __future__ import annotations
 import math, numpy as np
 from datetime import datetime, timezone
-from . import config
+from scripts.simulator import config
 
 # --- lightweight diagnostics ---
 _legs = 0

@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 import heapq, numpy as np
-from . import config, traffic
+from scripts.simulator import config, traffic
 
 @dataclass(order=True)
 class Event:
@@ -22,6 +22,7 @@ class Unit:
     busy_until: float = 0.0
     on_call_id: str | None = None
     can_dispatch: bool = True
+    zone: str | None = None
 
 class DES:
     def __init__(self, select_unit_fn):

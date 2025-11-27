@@ -1,9 +1,26 @@
 from __future__ import annotations
 import pandas as pd
 from datetime import datetime, timezone, timedelta
-from . import config
-from typing import List, Dict
-from .geo import in_any_polygon
+from typing import List, Dict, Set, Tuple
+from shapely.geometry import Point
+
+from scripts.simulator import config
+from scripts.simulator.geo import in_any_polygon, load_boundary, load_zones, zone_lookup_factory
+from scripts.simulator.des import Unit
+
+
+_BOUNDARIES = {
+    "als": None,
+    "bls": None,
+    "overlap": None,
+}
+
+ZONES = load_zones({
+    "ALS": "reference/lemsa_als_boundary.geojson",
+    "BLS": "reference/lemsa_bls_boundary.geojson",
+    "OVERLAP": "reference/lemsa_overlap_boundary.geojson"
+})
+ZONE_LOOKUP = zone_lookup_factory(ZONES)
 
 def _pick_time_col(df: pd.DataFrame):
     for c in config.TIME_COL_CANDIDATES:
@@ -52,7 +69,13 @@ def load_calls():
     calls["tod_min"] = (calls["_abs_epoch"] % (24*3600) // 60).astype(int)
     calls["id"] = calls.index.astype(str)
 
-    return calls[["id","tmin","lon","lat","h_lon","h_lat","_abs_epoch","tod_min"]].to_dict("records")
+    # NEW: tag each call with zone based on incident lon/lat
+    calls["zone"] = calls.apply(
+        lambda r: ZONE_LOOKUP(r["lon"], r["lat"]),
+        axis=1
+    )
+
+    return calls[["id","tmin","lon","lat","h_lon","h_lat","_abs_epoch","tod_min","zone"]].to_dict("records")
 
 def load_units():
     st = pd.read_csv(config.STATIONS_CSV)
@@ -68,17 +91,23 @@ def load_units():
 
     m = units_df.merge(st[["station_number","lat","lon"]], on="station_number", how="left").dropna(subset=["lat","lon"])
 
-    from .des import Unit
+    
     units = []
     for _, r in m.iterrows():
         station_lon = float(r["lon"]); station_lat = float(r["lat"])
-        units.append(Unit(
+        zone = ZONE_LOOKUP(station_lon, station_lat)
+
+        u = Unit(
             name=str(r["unit_designator"]).upper(),
             utype=str(r.get("unit_type","")).upper(),
             station=str(r["station_number"]),
             lon=station_lon, lat=station_lat,
             station_lon=station_lon, station_lat=station_lat
-        ))
+        )
+        # NEW: attach zone to unit
+        u.zone = zone
+
+        units.append(u)
     return units
 
 def which_shift(min_in_day: int) -> int:
@@ -159,3 +188,34 @@ def filter_units_in_bounds(units, geoms):
         if in_any_polygon(u.station_lon, u.station_lat, geoms):
             keep.append(u)
     return keep
+
+def load_boundaries_if_needed(config):
+    """Lazy load ALS/BLS/Overlap boundaries once per program."""
+    if _BOUNDARIES["als"] is None:
+        _BOUNDARIES["als"] = load_boundary(str(config.ALS_BOUNDARY))
+    if _BOUNDARIES["bls"] is None:
+        _BOUNDARIES["bls"] = load_boundary(str(config.BLS_BOUNDARY))
+    if _BOUNDARIES["overlap"] is None:
+        _BOUNDARIES["overlap"] = load_boundary(str(config.OVERLAP_BOUNDARY))
+
+
+def tag_calls_with_boundaries(calls: list[dict], config):
+    """
+    For each call, add:
+        call["in_als_boundary"]
+        call["in_bls_boundary"]
+        call["in_overlap_boundary"]
+    """
+    load_boundaries_if_needed(config)
+
+    als_poly = _BOUNDARIES["als"]
+    bls_poly = _BOUNDARIES["bls"]
+    overlap_poly = _BOUNDARIES["overlap"]
+
+    for c in calls:
+        p = Point(c["lon"], c["lat"])
+        c["in_als_boundary"] = als_poly.contains(p) if als_poly else False
+        c["in_bls_boundary"] = bls_poly.contains(p) if bls_poly else False
+        c["in_overlap_boundary"] = overlap_poly.contains(p) if overlap_poly else False
+
+    return calls

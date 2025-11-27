@@ -5,9 +5,17 @@ from pathlib import Path
 CALLS_PARQUET = Path("data/processed/medical_calls_lemsa.parquet")
 STATIONS_CSV  = Path("reference/lemsa_stations.csv")
 UNITS_CSV     = Path("reference/lemsa_units_consolidated.csv")
+DUTY_CSV      = Path("reference/lemsa_unit_duty.csv")
 
 RUNS_DIR   = Path("reports/runs")
 RUNLOG_CSV = Path("reports/runlog.csv")
+
+# Optional boundary files (WGS84).
+ALS_BOUNDARY      = Path("reference/maps/lemsa_als_boundary_wgs84.geojson")
+BLS_BOUNDARY      = Path("reference/maps/lemsa_bls_boundary_wgs84.geojson")
+OVERLAP_BOUNDARY  = Path("reference/maps/lemsa_overlap_boundary_wgs84.geojson")
+URBAN_GEOJSON_PATH = Path("reference/urban_areas_lancaster.geojson")
+RURAL_GEOJSON_PATH = Path("reference/rural_area_lancaster.geojson")
 
 # ---------- Field mapping ----------
 TIME_COL_CANDIDATES = [
@@ -89,9 +97,10 @@ TA_ALPHA = 0.10
 TA_LOOKBACK_MIN = 90
 
 BOUNDARY_GEOJSONS = [
-    "reference/lemsa_als_boundary.geojson",
-    "reference/lemsa_bls_boundary.geojson",
-    "reference/lemsa_overlap_boundary.geojson",
+    "reference/maps/lemsa_als_boundary_wgs84.geojson",
+    "reference/maps/lemsa_bls_boundary_wgs84.geojson",
+    "reference/maps/lemsa_overlap_boundary_wgs84.geojson",
 ]
-POLICY_NAME = "NearestETA"  # or "StationBiasETA", "MaxRadiusCap"
+POLICY_NAME = "nearest_eta"  # or "StationBiasETA", "MaxRadiusCap"
 POLICY_KWARGS = {"penalty_min": 2.0}  # or {"max_mi": 12.0}
+DUTY_ENFORCEMENT = True  # set False to ignore duty windows

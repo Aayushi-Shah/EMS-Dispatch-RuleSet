@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import json
 import pandas as pd
-from . import config
+from scripts.simulator import config
 
 def new_run_id():
     return datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")

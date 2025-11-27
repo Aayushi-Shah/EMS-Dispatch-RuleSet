@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json, os
 from typing import List, Optional, Union
-from shapely.geometry import shape, mapping
+from shapely.geometry import shape, Point
 from shapely.ops import unary_union
 
 def _point_in_ring(lon: float, lat: float, ring: list[list[float]]) -> bool:
@@ -58,29 +58,76 @@ def load_boundary(paths: Union[str, List[str], None]):
 
     geoms = []
     for p in paths:
-        if not p or not os.path.exists(p):
+        if not p:
             continue
-        with open(p, "r") as f:
+        path_str = str(p)
+        if not os.path.exists(path_str):
+            continue
+        with open(path_str, "r") as f:
             gj = json.load(f)
         feats = gj["features"] if gj.get("type") == "FeatureCollection" else [gj]
         for ft in feats:
-            if not ft or "geometry" not in ft or ft["geometry"] is None:
-                continue
-            geoms.append(shape(ft["geometry"]))
+            geom = ft.get("geometry")
+            if geom:
+                geoms.append(shape(geom))
 
     if not geoms:
         return None
 
-    uni = unary_union(geoms)
-    return {
-        "type": "FeatureCollection",
-        "features": [{"type": "Feature", "geometry": mapping(uni), "properties": {}}],
-    }
+    union_geom = unary_union(geoms)
+    return union_geom
 
 def in_any_polygon(lon: float, lat: float, geoms) -> bool:
     if not geoms:
         return True
-    for g in geoms:
-        if _point_in_polygon(lon, lat, g):
-            return True
-    return False
+    pt = Point(lon, lat)
+    if isinstance(geoms, (list, tuple)):
+        return any(g and g.contains(pt) for g in geoms)
+    return geoms.contains(pt)
+
+# -----------------------------------
+# Load multi-polygon zone boundaries
+# -----------------------------------
+
+def load_zones(zone_files: dict) -> dict:
+    """
+    zone_files = {
+        "ALS": "reference/lemsa_als_boundary.geojson",
+        "BLS": "reference/lemsa_bls_boundary.geojson",
+        "OVERLAP": "reference/lemsa_overlap_boundary.geojson"
+    }
+
+    Returns:
+        {
+            "ALS": shapely_polygon,
+            "BLS": shapely_polygon,
+            "OVERLAP": shapely_polygon
+        }
+    """
+    from shapely.geometry import shape
+    zones = {}
+    for name, path in zone_files.items():
+        try:
+            with open(path, "r") as f:
+                gj = json.load(f)
+            zones[name] = shape(gj["features"][0]["geometry"])
+        except Exception:
+            zones[name] = None
+    return zones
+
+
+def zone_lookup_factory(zones: dict):
+    """
+    Returns a function that maps (lon,lat) → zone_name or None
+    Priority: ALS → BLS → OVERLAP
+    """
+    def lookup(lon, lat):
+        from shapely.geometry import Point
+        if lon is None or lat is None:
+            return None
+        p = Point(lon, lat)
+        for name, poly in zones.items():
+            if poly and poly.contains(p):
+                return name
+        return None
+    return lookup

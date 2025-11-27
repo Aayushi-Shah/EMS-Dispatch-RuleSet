@@ -3,23 +3,48 @@ from __future__ import annotations
 
 import random
 from datetime import datetime, timezone
+import argparse
+import json
 import numpy as np
 import pandas as pd
 
-from . import config, traffic
-from .des import DES, Unit
-from .io import load_calls, load_units, segment_calls_by_shift, load_unit_duty
-from .kpis import weighted_aggregate
-from .logging_utils import new_run_id, write_artifacts
+from scripts.simulator import config, traffic
+from scripts.simulator.des import DES, Unit
+from scripts.simulator.io import (
+    load_calls,
+    load_units,
+    segment_calls_by_shift,
+    load_unit_duty,
+    tag_calls_with_boundaries,
+    tag_calls_in_bounds,
+    filter_units_in_bounds,
+)
+from scripts.simulator.kpis import weighted_aggregate
+from scripts.simulator.logging_utils import new_run_id, write_artifacts
+from scripts.simulator.geo import load_boundary
+from scripts.simulator.policies import select_policy
 
-from .geo import load_boundary
-from .io import tag_calls_in_bounds, filter_units_in_bounds
-from .policies import select_policy
+
+def _parse_cli():
+    parser = argparse.ArgumentParser(description="EMS simulator runner")
+    parser.add_argument("--policy", type=str, help="Policy name (overrides config.POLICY_NAME)")
+    parser.add_argument(
+        "--policy-kwargs",
+        type=str,
+        help="JSON string of policy kwargs (overrides/merges into config.POLICY_KWARGS)",
+    )
+    parser.add_argument(
+        "--max-segments",
+        type=int,
+        help="If set, simulate at most this many segments (useful for quick runs)",
+    )
+    return parser.parse_args()
 
 
 # ---------- small local diag helpers ----------
 def _hav_miles(lon1, lat1, lon2, lat2) -> float:
     import math
+
     R = 3958.7613
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
@@ -32,9 +57,12 @@ def _build_initial_unit_state(units: list[Unit]) -> dict[str, dict]:
     return {
         u.name: {
             "abs_free_epoch": -float("inf"),
-            "lon": u.lon, "lat": u.lat,
-            "station_lon": u.station_lon, "station_lat": u.station_lat,
-            "utype": u.utype, "station": u.station,
+            "lon": u.lon,
+            "lat": u.lat,
+            "station_lon": u.station_lon,
+            "station_lat": u.station_lat,
+            "utype": u.utype,
+            "station": u.station,
         }
         for u in units
     }
@@ -70,15 +98,15 @@ def run_one_segment(
     seg_key: str,
     duty_map: dict[str, list[tuple[list[int], int, int]]] | None = None,
     policy_fn=None,
-    policy_kwargs: dict | None = None,
 ) -> tuple[dict, dict]:
     """Run one shift segment and return (row_kpis, updated_unit_state)."""
     traffic.reset_stats()
-    policy_kwargs = policy_kwargs or {}
+
+    if policy_fn is None:
+        raise RuntimeError("policy_fn must be provided to run_one_segment")
 
     # DES expects a callable: (units, now_min, call) -> (unit, resp_minutes, debug_dict)
-    sim = DES(select_unit_fn=(lambda units, now, call: policy_fn(units, now, call, **policy_kwargs))
-              if policy_fn else None)
+    sim = DES(select_unit_fn=policy_fn)
 
     new_units: list[Unit] = []
     seg_start_abs = float(seg_start_abs_map[seg_key])
@@ -87,22 +115,32 @@ def run_one_segment(
     # Materialize units for this segment with carried busy state and duty flag
     for name, s in unit_state.items():
         remaining_min = max(0.0, (s["abs_free_epoch"] - seg_start_abs) / 60.0)
-        lon, lat = (s["lon"], s["lat"]) if remaining_min > 0 else (s["station_lon"], s["station_lat"])
-        can_dispatch = _is_unit_active_this_segment(name, duty_map, seg_key, seg_start_abs)
+        lon, lat = (
+            (s["lon"], s["lat"])
+            if remaining_min > 0
+            else (s["station_lon"], s["station_lat"])
+        )
+        can_dispatch = _is_unit_active_this_segment(
+            name, duty_map, seg_key, seg_start_abs
+        )
 
         u = Unit(
             name=name,
             utype=s["utype"],
             station=s["station"],
-            lon=lon, lat=lat,
-            station_lon=s["station_lon"], station_lat=s["station_lat"],
+            lon=lon,
+            lat=lat,
+            station_lon=s["station_lon"],
+            station_lat=s["station_lat"],
             busy_until=(remaining_min if remaining_min > 0 else 0.0),
-            can_dispatch=can_dispatch
+            can_dispatch=can_dispatch,
         )
         new_units.append(u)
         sim.add_unit(u)
         if u.busy_until > 0.0:
-            sim.schedule(u.busy_until, "unit_free", unit=u, end_lon=u.lon, end_lat=u.lat)
+            sim.schedule(
+                u.busy_until, "unit_free", unit=u, end_lon=u.lon, end_lat=u.lat
+            )
 
     # Attach absolute start and schedule calls
     for c in calls_segment:
@@ -119,38 +157,61 @@ def run_one_segment(
         abs_free = seg_start_abs + max(u.busy_until, 0.0) * 60.0
         updated_state[u.name] = {
             "abs_free_epoch": abs_free,
-            "lon": u.lon, "lat": u.lat,
-            "station_lon": u.station_lon, "station_lat": u.station_lat,
-            "utype": u.utype, "station": u.station,
+            "lon": u.lon,
+            "lat": u.lat,
+            "station_lon": u.station_lon,
+            "station_lat": u.station_lat,
+            "utype": u.utype,
+            "station": u.station,
         }
 
     # KPIs
-    resp = np.array(sim.metrics["resp_times"]) if sim.metrics["resp_times"] else np.array([])
+    resp = (
+        np.array(sim.metrics["resp_times"])
+        if sim.metrics["resp_times"]
+        else np.array([])
+    )
     row = {
         "n_calls": sim.metrics["n_calls"],
         "missed_calls": sim.metrics["missed_calls"],
         "p50_resp_min": np.percentile(resp, 50) if len(resp) else np.nan,
         "p90_resp_min": np.percentile(resp, 90) if len(resp) else np.nan,
         "avg_resp_min": float(resp.mean()) if len(resp) else np.nan,
-        "p50_wait_min": np.percentile(sim.metrics["wait_minutes"], 50) if sim.metrics["wait_minutes"] else np.nan,
-        "p90_wait_min": np.percentile(sim.metrics["wait_minutes"], 90) if sim.metrics["wait_minutes"] else np.nan,
-        "avg_onscene_min": np.mean(sim.metrics["on_scene"]) if sim.metrics["on_scene"] else np.nan,
-        "avg_transport_min": np.mean(sim.metrics["transport"]) if sim.metrics["transport"] else np.nan,
-        "avg_turnaround_min": np.mean(sim.metrics["turnaround"]) if sim.metrics["turnaround"] else np.nan,
+        "p50_wait_min": np.percentile(sim.metrics["wait_minutes"], 50)
+        if sim.metrics["wait_minutes"]
+        else np.nan,
+        "p90_wait_min": np.percentile(sim.metrics["wait_minutes"], 90)
+        if sim.metrics["wait_minutes"]
+        else np.nan,
+        "avg_onscene_min": np.mean(sim.metrics["on_scene"])
+        if sim.metrics["on_scene"]
+        else np.nan,
+        "avg_transport_min": np.mean(sim.metrics["transport"])
+        if sim.metrics["transport"]
+        else np.nan,
+        "avg_turnaround_min": np.mean(sim.metrics["turnaround"])
+        if sim.metrics["turnaround"]
+        else np.nan,
         "units": len(new_units),
     }
 
     # Per-segment traffic diagnostics
     tstats = traffic.snapshot_stats()
-    row.update({
-        "legs": tstats["legs"],
-        "avg_road_factor": tstats["avg_road_factor"],
-        "avg_hour_mult": tstats["avg_hour_mult"],
-        "avg_zone_mult": tstats["avg_zone_mult"],
-    })
+    row.update(
+        {
+            "legs": tstats["legs"],
+            "avg_road_factor": tstats["avg_road_factor"],
+            "avg_hour_mult": tstats["avg_hour_mult"],
+            "avg_zone_mult": tstats["avg_zone_mult"],
+        }
+    )
 
     # expose for caller to pick up hourly turnaround buckets etc.
     run_one_segment._last_metrics = sim.metrics
+    # attach segment to decisions for per-call debug export
+    run_one_segment._last_decisions = [
+        {**d, "segment": seg_key} for d in sim.metrics.get("decisions", [])
+    ]
     return row, updated_state
 
 
@@ -161,30 +222,36 @@ def _hourly_ta_rows_from_sim(sim_metrics, seg_key: str):
         if not vals:
             continue
         v = np.array(vals, dtype=float)
-        rows.append({
-            "segment": seg_key,
-            "hour": int(hour),
-            "n": int(v.size),
-            "mean": float(v.mean()),
-            "p50": float(np.percentile(v, 50)),
-            "p90": float(np.percentile(v, 90)),
-        })
+        rows.append(
+            {
+                "segment": seg_key,
+                "hour": int(hour),
+                "n": int(v.size),
+                "mean": float(v.mean()),
+                "p50": float(np.percentile(v, 50)),
+                "p90": float(np.percentile(v, 90)),
+            }
+        )
     return rows
 
 
 # ---------- main ----------
 def main():
+    args = _parse_cli()
     random.seed(config.RANDOM_SEED)
     np.random.seed(config.RANDOM_SEED)
 
     # Load inputs
     calls = load_calls()
+    calls = tag_calls_with_boundaries(calls, config)
     units = load_units()
     duty_map = load_unit_duty() if getattr(config, "DUTY_ENFORCEMENT", False) else {}
 
-    # Boundary filter (optional)
-    boundary = load_boundary(getattr(config, "BOUNDARY_GEOJSONS", None) or
-                         getattr(config, "BOUNDARY_GEOJSON", None))
+    # Boundary filter (optional master boundary union)
+    boundary = load_boundary(
+        getattr(config, "BOUNDARY_GEOJSONS", None)
+        or getattr(config, "BOUNDARY_GEOJSON", None)
+    )
     calls = tag_calls_in_bounds(calls, boundary)
     calls = [c for c in calls if c.get("in_bounds", True)]
     units = filter_units_in_bounds(units, boundary)
@@ -193,9 +260,11 @@ def main():
     groups, seg_start_abs = segment_calls_by_shift(calls)
 
     # Quick config print + naive diagnostics
-    print(f"[CFG] SCENE_SPEED_MPH={config.SCENE_SPEED_MPH} "
-          f"HOSPITAL_SPEED_MPH={config.HOSPITAL_SPEED_MPH} "
-          f"MAX_QUEUE_RETRIES={config.MAX_QUEUE_RETRIES}")
+    print(
+        f"[CFG] SCENE_SPEED_MPH={config.SCENE_SPEED_MPH} "
+        f"HOSPITAL_SPEED_MPH={config.HOSPITAL_SPEED_MPH} "
+        f"MAX_QUEUE_RETRIES={config.MAX_QUEUE_RETRIES}"
+    )
 
     calls_df = pd.DataFrame(calls)
     units_df = pd.DataFrame([{"lon": u.lon, "lat": u.lat} for u in units])
@@ -208,31 +277,62 @@ def main():
             dists.append(d)
         if dists:
             dists = np.array(dists)
-            print(f"[DIAG] nearest-station miles p50={np.percentile(dists,50):.2f} "
-                  f"p90={np.percentile(dists,90):.2f}")
-            est_p50 = 60.0 * np.percentile(dists, 50) / max(config.SCENE_SPEED_MPH, 1e-6)
-            est_p90 = 60.0 * np.percentile(dists, 90) / max(config.SCENE_SPEED_MPH, 1e-6)
-            print(f"[DIAG] naive resp est p50={est_p50:.2f} min p90={est_p90:.2f} min")
+            print(
+                f"[DIAG] nearest-station miles p50={np.percentile(dists,50):.2f} "
+                f"p90={np.percentile(dists,90):.2f}"
+            )
+            est_p50 = (
+                60.0
+                * np.percentile(dists, 50)
+                / max(config.SCENE_SPEED_MPH, 1e-6)
+            )
+            est_p90 = (
+                60.0
+                * np.percentile(dists, 90)
+                / max(config.SCENE_SPEED_MPH, 1e-6)
+            )
+            print(
+                f"[DIAG] naive resp est p50={est_p50:.2f} min p90={est_p90:.2f} min"
+            )
 
-    # Select policy
-    policy_name = getattr(config, "POLICY_NAME", "NearestETA")
+    # Select policy (name + kwargs come from config)
+    policy_name = args.policy or getattr(config, "POLICY_NAME", "nearest_eta")
     policy_kwargs = dict(getattr(config, "POLICY_KWARGS", {}))
-    policy_fn = select_policy(policy_name)
+    if args.policy_kwargs:
+        try:
+            cli_kwargs = json.loads(args.policy_kwargs)
+            if isinstance(cli_kwargs, dict):
+                policy_kwargs.update(cli_kwargs)
+        except Exception:
+            print("[WARN] --policy-kwargs is not valid JSON; ignoring.")
+    policy_fn = select_policy(policy_name, **policy_kwargs)
 
     # Run all segments once
     unit_state = _build_initial_unit_state(units)
     rows = []
     ta_hourly_accum = []
-    for key, seg in sorted(groups.items()):
+    decisions_accum = []
+    max_segments = args.max_segments if getattr(args, "max_segments", None) else None
+    for idx, (key, seg) in enumerate(sorted(groups.items())):
+        if max_segments is not None and idx >= max_segments:
+            break
         row, unit_state = run_one_segment(
-            seg, unit_state, seg_start_abs, key,
+            seg,
+            unit_state,
+            seg_start_abs,
+            key,
             duty_map=duty_map,
             policy_fn=policy_fn,
-            policy_kwargs=policy_kwargs,
         )
         row["segment"] = key
         rows.append(row)
-        ta_hourly_accum.extend(_hourly_ta_rows_from_sim(run_one_segment._last_metrics, key))
+        ta_hourly_accum.extend(
+            _hourly_ta_rows_from_sim(run_one_segment._last_metrics, key)
+        )
+        decisions_accum.extend(getattr(run_one_segment, "_last_decisions", []))
+    if not rows:
+        print("No calls to simulate after filtering; exiting.")
+        return
     per_shift_df = pd.DataFrame(rows).sort_values("segment")
 
     # Aggregate KPIs
@@ -246,7 +346,7 @@ def main():
     hourly_path = None
     if len(hourly_df):
         hourly_df = hourly_df.sort_values(["hour", "segment"])
-        hourly_path = (config.RUNS_DIR / run_id / "turnaround_hourly.csv")
+        hourly_path = config.RUNS_DIR / run_id / "turnaround_hourly.csv"
         hourly_path.parent.mkdir(parents=True, exist_ok=True)
         hourly_df.to_csv(hourly_path, index=False)
         print(f"→ turnaround-hourly: {hourly_path}")
@@ -266,7 +366,9 @@ def main():
             "TURNAROUND_MIN": config.TURNAROUND_MIN,
             "TURNAROUND_SCALE": config.TURNAROUND_SCALE,
             "MAX_QUEUE_RETRIES": config.MAX_QUEUE_RETRIES,
-            "ROAD_FACTOR_BY_SHIFT": getattr(config, "ROAD_FACTOR_BY_SHIFT", {}),
+            "ROAD_FACTOR_BY_SHIFT": getattr(
+                config, "ROAD_FACTOR_BY_SHIFT", {}
+            ),
             "HOUR_CONGESTION": getattr(config, "HOUR_CONGESTION", {}),
             "ZONES": getattr(config, "ZONES", []),
             "ZONE_MULTIPLIER": getattr(config, "ZONE_MULTIPLIER", {}),
@@ -274,18 +376,31 @@ def main():
             "DUTY_ENFORCEMENT": getattr(config, "DUTY_ENFORCEMENT", False),
             "POLICY_NAME": policy_name,
             "POLICY_KWARGS": policy_kwargs,
+            "MAX_SEGMENTS": max_segments,
         },
         "inputs": {
             "CALLS_PARQUET": str(config.CALLS_PARQUET),
             "STATIONS_CSV": str(config.STATIONS_CSV),
             "UNITS_CSV": str(config.UNITS_CSV),
         },
-        "counts": {"calls": len(calls), "units": len(units), "segments": len(groups)},
+        "counts": {
+            "calls": len(calls),
+            "units": len(units),
+            "segments": len(groups),
+        },
     }
     if hourly_path:
         meta["artifacts"] = {"turnaround_hourly_csv": str(hourly_path)}
 
     paths = write_artifacts(run_id, per_shift_df, summary_df, meta)
+
+    # Optional per-call decision debug (e.g., coverage metrics from policies)
+    if decisions_accum:
+        decisions_df = pd.DataFrame(decisions_accum)
+        decisions_path = config.RUNS_DIR / run_id / "decisions.csv"
+        decisions_path.parent.mkdir(parents=True, exist_ok=True)
+        decisions_df.to_csv(decisions_path, index=False)
+        paths["decisions_csv"] = str(decisions_path)
 
     # Console summary
     print(f"📦 calls loaded: {len(calls)}  units: {len(units)}")
@@ -297,6 +412,8 @@ def main():
     print(f"→ summary:   {paths['summary_csv']}")
     print(f"→ meta:      {paths['meta_json']}")
     print(f"→ runlog:    {paths['runlog_csv']}")
+    if "decisions_csv" in paths:
+        print(f"→ decisions: {paths['decisions_csv']}")
 
 
 if __name__ == "__main__":

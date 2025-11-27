@@ -1,6 +1,6 @@
 from __future__ import annotations
 import numpy as np
-from . import config
+from scripts.simulator import config
 
 def _hour_of_epoch(abs_epoch: float) -> int:
     return int((abs_epoch % (24 * 3600)) // 3600)

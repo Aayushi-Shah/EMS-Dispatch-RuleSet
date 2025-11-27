@@ -5,10 +5,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import config as cfg
-from .io import load_calls, load_units, segment_calls_by_shift
-from .runner import run_one_segment, _build_initial_unit_state   # reuse your runner helpers
-from .kpis import weighted_aggregate
+from scripts.simulator import config as cfg
+from scripts.simulator.io import load_calls, load_units, segment_calls_by_shift
+from scripts.simulator.runner import run_one_segment, _build_initial_unit_state   # reuse your runner helpers
+from scripts.simulator.kpis import weighted_aggregate
 
 OUT_DIR = Path("reports/calibration")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
