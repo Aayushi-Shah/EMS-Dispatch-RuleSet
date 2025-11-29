@@ -48,8 +48,8 @@ def load_calls():
     df["h_lon"] = config.HOSPITAL_LON
     df["h_lat"] = config.HOSPITAL_LAT
 
-    calls = (df[[tcol, lon, lat, "h_lon", "h_lat"]]
-             .rename(columns={tcol:"t", lon:"lon", lat:"lat"})
+    calls = (df[[tcol, lon, lat, "h_lon", "h_lat", "numberOfUnits", "description", "incidentType"]]
+             .rename(columns={tcol:"t", lon:"lon", lat:"lat", "numberOfUnits": "units_needed"})
              .sort_values("t")
              .reset_index(drop=True))
 
@@ -75,7 +75,7 @@ def load_calls():
         axis=1
     )
 
-    return calls[["id","tmin","lon","lat","h_lon","h_lat","_abs_epoch","tod_min","zone"]].to_dict("records")
+    return calls[["id","tmin","lon","lat","h_lon","h_lat","_abs_epoch","tod_min","zone","units_needed","description","incidentType"]].to_dict("records")
 
 def load_units():
     st = pd.read_csv(config.STATIONS_CSV)

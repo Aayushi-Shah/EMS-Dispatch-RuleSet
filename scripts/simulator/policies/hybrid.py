@@ -54,6 +54,15 @@ class HybridSeverityCoverageFairness(BasePolicy):
     RURAL_SAME_REGION_RADIUS_MI = 10.0
     URBAN_SAME_REGION_RADIUS_MI = 5.0
 
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        # Feature toggles for top-down pruning
+        self.use_coverage = kwargs.get("use_coverage", True)
+        self.use_fairness = kwargs.get("use_fairness", True)
+        self.use_zone_weights = kwargs.get("use_zone_weights", True)
+        self.use_last_unit_guardrail = kwargs.get("use_last_unit_guardrail", True)
+        self.use_fairness_weight_boost = kwargs.get("use_fairness_weight_boost", True)
+
     def __call__(self, units: List[UnitLike], now_min: float, call: CallDict) -> PolicyResult:
         # 1) Pull rich rule signals (capability, risk, fairness, demand, etc.)
         signals = _rule_signals_p5(call)
@@ -178,37 +187,44 @@ class HybridSeverityCoverageFairness(BasePolicy):
 
             # extra weight for underprotected/high-demand zones
             coverage_loss = 0.4 * unit_loss + 0.6 * call_loss
-            if call_is_urban:
-                coverage_loss *= self.URBAN_CALL_BOOST
-            if zone_underprotected:
-                coverage_loss *= 1.5
-            if zone_demand_score > 0.0:
-                coverage_loss *= (1.0 + min(zone_demand_score, 2.0) * 0.25)
+            if self.use_coverage:
+                if call_is_urban:
+                    coverage_loss *= self.URBAN_CALL_BOOST
+                if self.use_zone_weights and zone_underprotected:
+                    coverage_loss *= 1.5
+                if self.use_zone_weights and zone_demand_score > 0.0:
+                    coverage_loss *= (1.0 + min(zone_demand_score, 2.0) * 0.25)
 
-            # Soften last-unit guardrail
-            if remaining_around_unit == 0 and risk < self.HIGH_RISK_OVERRIDE:
-                coverage_loss += 1.0
+                # Soften last-unit guardrail
+                if self.use_last_unit_guardrail and remaining_around_unit == 0 and risk < self.HIGH_RISK_OVERRIDE:
+                    coverage_loss += 1.0
 
-            coverage_mult = 1.0 + self.BETA_COVERAGE * max(0.0, coverage_loss)
+                coverage_mult = 1.0 + self.BETA_COVERAGE * max(0.0, coverage_loss)
+            else:
+                coverage_mult = 1.0
 
             # --- 8) Fairness penalty (P4-style bias) ---
             fairness_penalty = 0.0
 
-            # 8a) Area mismatch between unit and call
-            if u_area != "unknown" and call_area != "unknown" and u_area != call_area:
-                fairness_penalty += self.AREA_MISMATCH_PENALTY
+            if self.use_fairness:
+                # 8a) Area mismatch between unit and call
+                if u_area != "unknown" and call_area != "unknown" and u_area != call_area:
+                    fairness_penalty += self.AREA_MISMATCH_PENALTY
 
-            # 8a-2) Same-area but distant counts as mismatch
-            if call_area == "rural" and u_area == "rural" and d_call_unit > self.RURAL_SAME_REGION_RADIUS_MI:
-                fairness_penalty += self.AREA_MISMATCH_PENALTY
-            if call_area == "urban" and u_area == "urban" and d_call_unit > self.URBAN_SAME_REGION_RADIUS_MI:
-                fairness_penalty += self.AREA_MISMATCH_PENALTY
+                # 8a-2) Same-area but distant counts as mismatch
+                if call_area == "rural" and u_area == "rural" and d_call_unit > self.RURAL_SAME_REGION_RADIUS_MI:
+                    fairness_penalty += self.AREA_MISMATCH_PENALTY
+                if call_area == "urban" and u_area == "urban" and d_call_unit > self.URBAN_SAME_REGION_RADIUS_MI:
+                    fairness_penalty += self.AREA_MISMATCH_PENALTY
 
-            # 8b) Optional: add small penalty when call lacks zone info to avoid bias
-            if not has_zone:
-                fairness_penalty *= 0.8
+                # 8b) Optional: add small penalty when call lacks zone info to avoid bias
+                if not has_zone:
+                    fairness_penalty *= 0.8
 
-            fairness_mult = 1.0 + self.GAMMA_FAIRNESS * fairness_penalty
+                fairness_mult = 1.0 + self.GAMMA_FAIRNESS * fairness_penalty
+            else:
+                fairness_mult = 1.0
+                fairness_penalty = 0.0
 
             # --- 9) Base score: ETA + light hints ---
             base_score = eta * sev_mult
@@ -223,7 +239,8 @@ class HybridSeverityCoverageFairness(BasePolicy):
             score = base_score * coverage_mult * fairness_mult
 
             # Policy-level fairness weight (from call-side R5) – favor underserved calls
-            score /= max(fairness_w, 1.0)
+            if self.use_fairness_weight_boost:
+                score /= max(fairness_w, 1.0)
 
             # jitter for stability
             score += r10_random_tiebreaker(self._rng)

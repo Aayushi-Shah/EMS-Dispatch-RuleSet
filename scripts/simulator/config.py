@@ -96,6 +96,22 @@ TA_ALPHA = 0.10
 # Lookback window if you later compute rolling ED load (minutes). Not used yet.
 TA_LOOKBACK_MIN = 90
 
+# ---------- Transport / non-transport heuristics ----------
+USE_NON_TRANSPORT = True
+NON_TRANSPORT_BASE = 0.1          # base probability a call does NOT transport
+NON_TRANSPORT_HIGH_PROB = 0.8     # if keywords indicate likely non-transport
+NON_TRANSPORT_LOW_PROB = 0.0      # if keywords indicate definite transport
+NON_TRANSPORT_KEYWORDS = [
+    "lift assist", "public assist", "minor injury", "no patient",
+    "refused", "cancel", "cancelled", "no transport", "ntp",
+    "fall", "ankle", "wrist", "sick person",
+]
+TRANSPORT_KEYWORDS = [
+    "cardiac", "chest pain", "no pulse", "not breathing", "respiratory",
+    "gunshot", "stabbing", "overdose", "stroke", "seizure",
+]
+SINGLE_TRANSPORT_PER_CALL = True  # for multi-unit calls, only one unit transports by default
+
 BOUNDARY_GEOJSONS = [
     "reference/maps/lemsa_als_boundary_wgs84.geojson",
     "reference/maps/lemsa_bls_boundary_wgs84.geojson",
