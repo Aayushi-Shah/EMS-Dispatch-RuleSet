@@ -49,8 +49,8 @@ class CoveragePreservingETA(BasePolicy):
         keep_free = signals["keep_free"]
         keep_close = signals["keep_close"]
 
-        # 1) Candidate units: can_dispatch only (do NOT over-filter by busy_until here)
-        candidates = _filter_dispatchable(units)  # <-- no now_min
+        # 1) Candidate units: can_dispatch and not busy past now_min
+        candidates = _filter_dispatchable(units, now_min=now_min)
         if not candidates:
             return None, float("inf"), {
                 "policy": self.name,
@@ -74,6 +74,8 @@ class CoveragePreservingETA(BasePolicy):
         best_eta = float("inf")
         best_score = float("inf")
         best_debug_fields: Dict[str, Any] = {}
+
+        total_free = len(coverage_pool)
 
         for u in candidates:
             u_lon, u_lat = float(u.lon), float(u.lat)
@@ -110,6 +112,10 @@ class CoveragePreservingETA(BasePolicy):
             # Calls in urban area get extra protection
             if call_is_urban:
                 coverage_loss *= self.URBAN_CALL_BOOST
+
+            # Avoid draining the last unit if there is at least one other free unit elsewhere
+            if total_free > 1 and remaining_free == 0:
+                coverage_loss += 0.5  # nudge away from emptying the area
 
             # Turn coverage loss into multiplicative penalty
             coverage_mult = 1.0 + self.BETA * coverage_loss

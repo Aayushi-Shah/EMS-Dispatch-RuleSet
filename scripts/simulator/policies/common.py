@@ -139,6 +139,40 @@ def _rule_signals_p4(call: CallDict) -> Dict[str, Any]:
     }
 
 
+def _rule_signals_p5(call: CallDict) -> Dict[str, Any]:
+    """
+    Signals for P5 hybrid: capability, risk, fairness, demand/zone hints.
+    """
+    rr = apply_rules(["R2", "R3", "R5", "R6", "R7", "R8", "R9"], call)
+
+    fairness_weights = [
+        float(r.fairness_weight)
+        for r in rr
+        if getattr(r, "fairness_weight", None) is not None
+    ]
+    fairness_w = max(fairness_weights) if fairness_weights else 1.0
+
+    high_demand_weights = [
+        float(r.high_demand_weight)
+        for r in rr
+        if getattr(r, "high_demand_weight", None) is not None
+    ]
+    zone_demand_score = (max(high_demand_weights) - 1.0) if high_demand_weights else 0.0
+
+    return {
+        "als_capable": any(r.als_capable for r in rr if getattr(r, "als_capable", None) is not None),
+        "bls_capable": any(r.bls_capable for r in rr if getattr(r, "bls_capable", None) is not None),
+        "risk": float(next((r.risk_score for r in rr if getattr(r, "risk_score", None) is not None), 0.0)),
+        "fairness_w": fairness_w,
+        "keep_free": any(getattr(r, "keep_free_flag", False) for r in rr),
+        "keep_close": any(getattr(r, "keep_close_flag", False) for r in rr),
+        "zone_underprotected": any(getattr(r, "zone_underprotected", False) for r in rr) or bool(call.get("zone_underprotected", False)),
+        "zone_demand_score": zone_demand_score,
+        "require_als": bool(call.get("require_als", False)),
+        "has_zone": call.get("zone") is not None,
+    }
+
+
 # -----------------------------
 # small helpers for P1/P2
 # -----------------------------

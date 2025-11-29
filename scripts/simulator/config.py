@@ -31,7 +31,7 @@ HOSPITAL_LON = -76.304382
 # ---------- Simulation controls ----------
 RANDOM_SEED = 42
 
-SEGMENT_BY_SHIFT = True
+SEGMENT_BY_SHIFT = False
 SHIFT_WINDOWS = [(0, 480), (480, 960), (960, 1440)]  # [00-08), [08-16), [16-24)
 
 # Queue semantics

@@ -15,6 +15,7 @@ from scripts.simulator.policies.nearest_eta import NearestETA
 from scripts.simulator.policies.als_bls_severity import ALSBLSSeverityPolicy
 from scripts.simulator.policies.coverage import CoveragePreservingETA
 from scripts.simulator.policies.fairness import FairnessFirstPolicy
+from scripts.simulator.policies.hybrid import HybridSeverityCoverageFairness
 
 PolicyClass = Type[BasePolicy]
 
@@ -25,6 +26,8 @@ POLICY_REGISTRY: Dict[str, PolicyClass] = {
     "coverage_preserving": CoveragePreservingETA,
     "p4_fairness": FairnessFirstPolicy,
     "fairness_first": FairnessFirstPolicy,
+    "p5_hybrid": HybridSeverityCoverageFairness,
+    "hybrid_all": HybridSeverityCoverageFairness,
 }
 
 __all__ = [
@@ -38,6 +41,7 @@ __all__ = [
     "ALSBLSSeverityPolicy",
     "CoveragePreservingETA",
     "FairnessFirstPolicy",
+    "HybridSeverityCoverageFairness",
     "select_policy",
     "POLICY_REGISTRY",
 ]

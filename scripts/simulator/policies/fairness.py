@@ -9,6 +9,7 @@ from scripts.simulator.policies.common import (
     PolicyResult,
     UnitLike,
     _filter_dispatchable,
+    _hav_miles,
     _rule_signals_p4,
     classify_urban_rural_cached,
     r1_eta_minutes,
@@ -31,6 +32,8 @@ class FairnessFirstPolicy(BasePolicy):
     """
 
     name = "p4_fairness"
+    RURAL_SAME_REGION_RADIUS_MI = 10.0
+    URBAN_SAME_REGION_RADIUS_MI = 5.0
 
     def __call__(self, units: List[UnitLike], now_min: float, call: CallDict) -> PolicyResult:
         # Call-level fairness signals (R5/R7/R8 subset)
@@ -39,8 +42,8 @@ class FairnessFirstPolicy(BasePolicy):
         keep_free = signals["keep_free"]
         keep_close = signals["keep_close"]
 
-        # Candidate units: can_dispatch only
-        candidates = _filter_dispatchable(units)  # no busy_until cutoff here
+        # Candidate units: can_dispatch and free by now_min
+        candidates = _filter_dispatchable(units, now_min=now_min)
         if not candidates:
             return None, float("inf"), {
                 "policy": self.name,
@@ -60,30 +63,36 @@ class FairnessFirstPolicy(BasePolicy):
             """
             u_lon, u_lat = float(u.lon), float(u.lat)
             u_area = classify_urban_rural_cached(u_lon, u_lat)
+            d_mi = _hav_miles(c_lon, c_lat, u_lon, u_lat)
 
             # Base penalties by (call_area, unit_area)
             if call_area == "urban":
                 # Urban call: avoid draining rural units if urban units exist
                 if u_area == "urban":
-                    base = 0.0
+                    # Same-region urban preferred; distant urban treated as mismatch
+                    if d_mi <= self.URBAN_SAME_REGION_RADIUS_MI:
+                        base = 0.15
+                    else:
+                        base = 2.5
                 elif u_area == "unknown":
-                    base = 0.5
+                    base = 0.7
                 else:  # u_area == "rural"
-                    base = 2.0
+                    base = 2.5
             elif call_area == "rural":
                 # Rural call: prefer rural units, but urban support is OK if needed
                 if u_area == "rural":
-                    base = 0.0
+                    # Same-region rural preferred; distant rural treated as mismatch
+                    if d_mi <= self.RURAL_SAME_REGION_RADIUS_MI:
+                        base = 0.1
+                    else:
+                        base = 2.5
                 elif u_area == "unknown":
-                    base = 0.5
+                    base = 0.6
                 else:  # u_area == "urban"
-                    base = 1.0
+                    base = 1.4
             else:
                 # Unknown call area → mild, symmetric penalties
-                if u_area == "rural":
-                    base = 0.5
-                else:
-                    base = 0.5
+                base = 0.4
 
             # Scale by fairness weight (R5) so underserved calls get stronger fairness
             return base * max(fairness_w, 1.0)

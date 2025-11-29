@@ -28,7 +28,7 @@ class NearestETA(BasePolicy):
         best_eta = float("inf")
 
         # Only consider units that can be dispatched in this segment
-        candidates = _filter_dispatchable(units)
+        candidates = _filter_dispatchable(units, now_min=now_min)
         if not candidates:
             return None, float("inf"), {
                 "policy": self.name,

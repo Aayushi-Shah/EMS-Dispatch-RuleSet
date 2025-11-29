@@ -52,7 +52,8 @@ class ALSBLSSeverityPolicy(BasePolicy):
         best_score = float("inf")
         best_eta = float("inf")
 
-        candidates = _filter_dispatchable(units)
+        # Only dispatchable and not busy past now_min
+        candidates = _filter_dispatchable(units, now_min=now_min)
         candidates = _filter_bls_by_capability(candidates, bls_capable)
 
         if not candidates:
@@ -66,6 +67,10 @@ class ALSBLSSeverityPolicy(BasePolicy):
 
             # 2) Never send BLS outside its geographic capability
             if utype == "BLS" and not bls_capable:
+                continue
+
+            # 2a) For high-risk calls where ALS is capable, skip BLS
+            if risk >= self.HIGH_RISK_THRESH and als_capable and utype == "BLS":
                 continue
 
             # 3) Compute base ETA from R1 (with traffic)
