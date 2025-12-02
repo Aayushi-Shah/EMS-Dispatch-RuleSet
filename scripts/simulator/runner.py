@@ -22,7 +22,7 @@ from scripts.simulator.io import (
 from scripts.simulator.kpis import weighted_aggregate
 from scripts.simulator.logging_utils import new_run_id, write_artifacts
 from scripts.simulator.geo import load_boundary
-from scripts.simulator.policies import select_policy
+from scripts.policies import select_policy
 
 
 def _parse_cli():

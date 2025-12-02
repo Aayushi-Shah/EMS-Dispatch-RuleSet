@@ -1,0 +1,30 @@
+unit_designator,cad_calls,unit_type,station_number,utype,source,station_name,station_lon,station_lat,unit_zone,unit_area
+AMB 06-1,2903,AMB,06-1,BLS,derived_from_calls,East Station,-76.25433641842815,40.03576920430254,OVERLAP,urban
+AMB 06-2,618,AMB,06-2,BLS,derived_from_calls,George St Station,-76.35648418774129,40.00252495941176,BLS,urban
+AMB 06-3,318,AMB,06-3,BLS,derived_from_calls,Columbia Ave Station,-76.37979500308371,40.04033860807688,unknown,urban
+AMB 06-5,707,AMB,06-5,BLS,derived_from_calls,Headquaters,-76.30677061657629,40.024363672488704,BLS,urban
+AMB 06-7,5218,AMB,06-7,BLS,derived_from_calls,LGH Station,-76.30438198270724,40.04714417759513,BLS,urban
+AMB 06-8,3452,AMB,06-8,BLS,derived_from_calls,Lancaster Township FD Station,-76.32781914541216,40.02744881187077,BLS,urban
+AMB 06-9,38,AMB,06-9,BLS,derived_from_calls,WBH Station,-76.3511851607547,40.06538678948616,BLS,urban
+AMB 56-1,645,AMB,56-1,BLS,derived_from_calls,Willow Valley Station,-76.27491224541403,39.98543448206992,OVERLAP,urban
+AMB 56-4,31,AMB,56-4,BLS,derived_from_calls,Buck Station,-76.23041158959896,39.881874598057095,OVERLAP,rural
+AMB 56-5,35,AMB,56-5,BLS,derived_from_calls,Quarryville Station,-76.1579787761068,39.89101937719157,OVERLAP,rural
+AMB 56-6,175,AMB,56-6,BLS,derived_from_calls,Strasburg Station,-76.18568937425025,39.983812206707675,OVERLAP,rural
+AMB 56-9,501,AMB,56-9,BLS,derived_from_calls,Conestoga Station,-76.34425561843241,39.94105216296149,OVERLAP,rural
+MEDIC 06-1,1830,MEDIC,06-1,ALS,derived_from_calls,East Station,-76.25433641842815,40.03576920430254,OVERLAP,urban
+MEDIC 06-2,423,MEDIC,06-2,ALS,derived_from_calls,George St Station,-76.35648418774129,40.00252495941176,BLS,urban
+MEDIC 06-3,2255,MEDIC,06-3,ALS,derived_from_calls,Columbia Ave Station,-76.37979500308371,40.04033860807688,unknown,urban
+MEDIC 06-7,2229,MEDIC,06-7,ALS,derived_from_calls,LGH Station,-76.30438198270724,40.04714417759513,BLS,urban
+MEDIC 06-8,1200,MEDIC,06-8,ALS,derived_from_calls,Lancaster Township FD Station,-76.32781914541216,40.02744881187077,BLS,urban
+MEDIC 06-9,368,MEDIC,06-9,ALS,derived_from_calls,WBH Station,-76.3511851607547,40.06538678948616,BLS,urban
+MEDIC 56-1,3378,MEDIC,56-1,ALS,derived_from_calls,Willow Valley Station,-76.27491224541403,39.98543448206992,OVERLAP,urban
+MEDIC 56-4,330,MEDIC,56-4,ALS,derived_from_calls,Buck Station,-76.23041158959896,39.881874598057095,OVERLAP,rural
+MEDIC 56-5,2747,MEDIC,56-5,ALS,derived_from_calls,Quarryville Station,-76.1579787761068,39.89101937719157,OVERLAP,rural
+MEDIC 56-6,1238,MEDIC,56-6,ALS,derived_from_calls,Strasburg Station,-76.18568937425025,39.983812206707675,OVERLAP,rural
+MEDIC 56-9,1,MEDIC,56-9,ALS,derived_from_calls,Conestoga Station,-76.34425561843241,39.94105216296149,OVERLAP,rural
+MICU 06-3,269,MICU,06-3,ALS,derived_from_calls,Columbia Ave Station,-76.37979500308371,40.04033860807688,unknown,urban
+MICU 06-9,87,MICU,06-9,ALS,derived_from_calls,WBH Station,-76.3511851607547,40.06538678948616,BLS,urban
+MICU 56-1,248,MICU,56-1,ALS,derived_from_calls,Willow Valley Station,-76.27491224541403,39.98543448206992,OVERLAP,urban
+MICU 56-4,60,MICU,56-4,ALS,derived_from_calls,Buck Station,-76.23041158959896,39.881874598057095,OVERLAP,rural
+MICU 56-5,225,MICU,56-5,ALS,derived_from_calls,Quarryville Station,-76.1579787761068,39.89101937719157,OVERLAP,rural
+MICU 56-6,76,MICU,56-6,ALS,derived_from_calls,Strasburg Station,-76.18568937425025,39.983812206707675,OVERLAP,rural

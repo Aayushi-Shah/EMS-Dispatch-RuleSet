@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from scripts.simulator.policies.common import (
+from scripts.policies.common import (
     BasePolicy,
     CallDict,
     PolicyResult,

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Type
 
-from scripts.simulator.policies.common import (  # noqa: F401
+from scripts.policies.common import (  # noqa: F401
     BasePolicy,
     CallDict,
     PolicyResult,
@@ -11,12 +11,12 @@ from scripts.simulator.policies.common import (  # noqa: F401
     classify_urban_rural,
     classify_urban_rural_cached,
 )
-from scripts.simulator.policies.nearest_eta import NearestETA
-from scripts.simulator.policies.als_bls_severity import ALSBLSSeverityPolicy
-from scripts.simulator.policies.coverage import CoveragePreservingETA
-from scripts.simulator.policies.fairness import FairnessFirstPolicy
-from scripts.simulator.policies.hybrid import HybridSeverityCoverageFairness
-from scripts.simulator.policies.feature_flag import FeatureFlagPolicy
+from scripts.policies.nearest_eta import NearestETA
+from scripts.policies.als_bls_severity import ALSBLSSeverityPolicy
+from scripts.policies.coverage import CoveragePreservingETA
+from scripts.policies.fairness import FairnessFirstPolicy
+from scripts.policies.hybrid import HybridSeverityCoverageFairness
+from scripts.policies.feature_flag import FeatureFlagPolicy
 
 PolicyClass = Type[BasePolicy]
 
