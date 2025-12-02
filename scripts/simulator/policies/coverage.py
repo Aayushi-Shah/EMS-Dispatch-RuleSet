@@ -11,7 +11,8 @@ from scripts.simulator.policies.common import (
     _filter_dispatchable,
     _hav_miles,
     _rule_signals_p3,
-    classify_urban_rural,
+    call_urban_rural,
+    unit_urban_rural,
     r1_eta_minutes,
     r8_busy_load_penalty,
     r10_random_tiebreaker,
@@ -67,7 +68,7 @@ class CoveragePreservingETA(BasePolicy):
 
         # 3) Call geometry + classification
         c_lon, c_lat = float(call["lon"]), float(call["lat"])
-        call_area = classify_urban_rural(c_lon, c_lat)
+        call_area = call_urban_rural(call)
         call_is_urban = (call_area == "urban")
 
         best_unit: Optional[UnitLike] = None
@@ -81,7 +82,7 @@ class CoveragePreservingETA(BasePolicy):
             u_lon, u_lat = float(u.lon), float(u.lat)
 
             # 4) Classify unit's current location → pick radius & min_free
-            u_area = classify_urban_rural(u_lon, u_lat)
+            u_area = unit_urban_rural(u)
             if u_area == "urban":
                 radius = self.URBAN_RADIUS_MI
                 min_free = self.URBAN_MIN_FREE

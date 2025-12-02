@@ -59,7 +59,30 @@ def aggregate_decisions(run_dir: Path) -> Dict[str, Any]:
 
 def summarize_runs(runs_dir: Path, candidates_csv: Path, out_csv: Path) -> None:
     runs_dir = runs_dir.expanduser()
-    candidates = {row["variant_id"]: row for row in csv.DictReader(candidates_csv.open())}
+    # Build lookup maps from candidates CSV
+    cand_rows = list(csv.DictReader(candidates_csv.open()))
+    candidates = {row["variant_id"]: row for row in cand_rows}
+
+    def _norm_kwargs(raw: str | dict | None) -> str:
+        """Return a deterministic JSON string for kwargs to enable matching."""
+        if raw is None:
+            return "{}"
+        if isinstance(raw, str):
+            raw = raw.strip()
+            if not raw or raw == "{}":
+                return "{}"
+            try:
+                parsed = ast.literal_eval(raw)
+            except Exception:
+                return "{}"
+            raw = parsed
+        if not isinstance(raw, dict):
+            return "{}"
+        return json.dumps(raw, sort_keys=True)
+
+    cand_by_policy_kwargs = {
+        (row["policy"], _norm_kwargs(row.get("kwargs"))): row for row in cand_rows
+    }
     rows: List[Dict[str, Any]] = []
 
     for run_dir in runs_dir.iterdir():
@@ -73,17 +96,29 @@ def summarize_runs(runs_dir: Path, candidates_csv: Path, out_csv: Path) -> None:
         except Exception:
             continue
         run_id = meta.get("run_id") or run_dir.name
-        # Expect variant_id prefix in run_id like "<variant>_<timestamp>"
-        variant_id = run_id.split("_")[0]
-        cand = candidates.get(variant_id, {})
-        complexity = cand.get("complexity")
-        policy = cand.get("policy")
+        cfg = meta.get("config") or {}
+        policy_from_meta = cfg.get("POLICY_NAME")
+        kwargs_from_meta = cfg.get("POLICY_KWARGS") or {}
+
+        # Pull variant hints from meta or run_id prefix
+        variant_hint = meta.get("variant_id") or cfg.get("VARIANT_ID") or run_id.split("_")[0]
+        cand = candidates.get(variant_hint, {})
+        if not cand:
+            key = (policy_from_meta, _norm_kwargs(kwargs_from_meta))
+            cand = cand_by_policy_kwargs.get(key, {})
+            # If no candidate match, skip this run (likely old/manual run)
+            if not cand:
+                continue
+            variant_hint = cand.get("variant_id") or variant_hint
+
+        complexity = cand.get("complexity") or cfg.get("VARIANT_COMPLEXITY")
+        policy = cand.get("policy") or cfg.get("VARIANT_POLICY") or policy_from_meta
 
         summary = load_summary(run_dir)
         agg = aggregate_decisions(run_dir)
         row: Dict[str, Any] = {
             "run_id": run_id,
-            "variant_id": variant_id,
+            "variant_id": variant_hint,
             "policy": policy,
             "complexity": complexity,
         }

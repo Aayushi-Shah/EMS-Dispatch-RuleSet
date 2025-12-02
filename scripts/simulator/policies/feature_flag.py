@@ -14,10 +14,11 @@ from scripts.simulator.policies.common import (
     _norm_utype_cached,
     _rule_signals_p2,
     _rule_signals_p4,
+    call_urban_rural,
+    unit_urban_rural,
     r1_eta_minutes,
     r8_busy_load_penalty,
     r10_random_tiebreaker,
-    classify_urban_rural,
 )
 
 
@@ -87,7 +88,7 @@ class FeatureFlagPolicy(BasePolicy):
         total_free = len(coverage_pool)
 
         c_lon, c_lat = float(call["lon"]), float(call["lat"])
-        call_area = classify_urban_rural(c_lon, c_lat)
+        call_area = call_urban_rural(call)
         call_is_urban = call_area == "urban"
 
         best_unit: Optional[UnitLike] = None
@@ -121,7 +122,7 @@ class FeatureFlagPolicy(BasePolicy):
             coverage_mult = 1.0
             if self.use_coverage_unit or self.use_coverage_call:
                 u_lon, u_lat = float(u.lon), float(u.lat)
-                u_area = classify_urban_rural(u_lon, u_lat)
+                u_area = unit_urban_rural(u)
                 if u_area == "urban":
                     unit_radius = self.urban_radius
                     unit_min_free = self.urban_min_free
@@ -175,7 +176,7 @@ class FeatureFlagPolicy(BasePolicy):
             fairness_penalty = 0.0
             if self.use_fairness:
                 u_lon, u_lat = float(u.lon), float(u.lat)
-                u_area = classify_urban_rural(u_lon, u_lat)
+                u_area = unit_urban_rural(u)
                 d_call = _hav_miles(c_lon, c_lat, u_lon, u_lat)
                 if u_area != "unknown" and call_area != "unknown" and u_area != call_area:
                     fairness_penalty += self.area_mismatch_penalty

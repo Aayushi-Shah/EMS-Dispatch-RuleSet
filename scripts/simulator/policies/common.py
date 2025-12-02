@@ -432,6 +432,41 @@ def classify_urban_rural_cached(lon: float, lat: float) -> str:
     return classify_urban_rural(float(lon), float(lat))
 
 
+def call_urban_rural(call: CallDict) -> str:
+    """
+    Prefer pre-tagged call['urban_rural']; fall back to geometry-based classify_urban_rural.
+    """
+    if call is None:
+        return "unknown"
+    val = call.get("urban_rural")
+    if isinstance(val, str) and val:
+        return val
+    lon = call.get("lon")
+    lat = call.get("lat")
+    if lon is None or lat is None:
+        return "unknown"
+    return classify_urban_rural_cached(float(lon), float(lat))
+
+
+def unit_urban_rural(u: UnitLike) -> str:
+    """
+    Prefer cached/pre-tagged unit.urban_rural; otherwise classify once and cache on the unit.
+    """
+    val = getattr(u, "urban_rural", None)
+    if isinstance(val, str) and val:
+        return val
+    lon = getattr(u, "lon", None) or getattr(u, "station_lon", None)
+    lat = getattr(u, "lat", None) or getattr(u, "station_lat", None)
+    if lon is None or lat is None:
+        return "unknown"
+    area = classify_urban_rural_cached(float(lon), float(lat))
+    try:
+        setattr(u, "urban_rural", area)
+    except Exception:
+        pass
+    return area
+
+
 # -----------------------------
 # Base policy
 # -----------------------------

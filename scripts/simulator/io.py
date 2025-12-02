@@ -48,10 +48,48 @@ def load_calls():
     df["h_lon"] = config.HOSPITAL_LON
     df["h_lat"] = config.HOSPITAL_LAT
 
-    calls = (df[[tcol, lon, lat, "h_lon", "h_lat", "numberOfUnits", "description", "incidentType"]]
-             .rename(columns={tcol:"t", lon:"lon", lat:"lat", "numberOfUnits": "units_needed"})
-             .sort_values("t")
-             .reset_index(drop=True))
+    # Ensure pre-tagged fields exist (preference: use columns from tagged parquet).
+    for col, default in {
+        "in_als_boundary": False,
+        "in_bls_boundary": False,
+        "in_overlap_boundary": False,
+    }.items():
+        if col not in df.columns:
+            df[col] = default
+    if "zone" not in df.columns:
+        df["zone"] = None
+    if "urban_rural" not in df.columns:
+        df["urban_rural"] = None
+
+    calls = (
+        df[
+            [
+                tcol,
+                lon,
+                lat,
+                "h_lon",
+                "h_lat",
+                "numberOfUnits",
+                "description",
+                "incidentType",
+                "in_als_boundary",
+                "in_bls_boundary",
+                "in_overlap_boundary",
+                "zone",
+                "urban_rural",
+            ]
+        ]
+        .rename(
+            columns={
+                tcol: "t",
+                lon: "lon",
+                lat: "lat",
+                "numberOfUnits": "units_needed",
+            }
+        )
+        .sort_values("t")
+        .reset_index(drop=True)
+    )
 
     if pd.api.types.is_datetime64_any_dtype(calls["t"]):
         abs_epoch = calls["t"].astype("int64") // 10**9
@@ -69,13 +107,26 @@ def load_calls():
     calls["tod_min"] = (calls["_abs_epoch"] % (24*3600) // 60).astype(int)
     calls["id"] = calls.index.astype(str)
 
-    # NEW: tag each call with zone based on incident lon/lat
-    calls["zone"] = calls.apply(
-        lambda r: ZONE_LOOKUP(r["lon"], r["lat"]),
-        axis=1
-    )
-
-    return calls[["id","tmin","lon","lat","h_lon","h_lat","_abs_epoch","tod_min","zone","units_needed","description","incidentType"]].to_dict("records")
+    return calls[
+        [
+            "id",
+            "tmin",
+            "lon",
+            "lat",
+            "h_lon",
+            "h_lat",
+            "_abs_epoch",
+            "tod_min",
+            "zone",
+            "urban_rural",
+            "in_als_boundary",
+            "in_bls_boundary",
+            "in_overlap_boundary",
+            "units_needed",
+            "description",
+            "incidentType",
+        ]
+    ].to_dict("records")
 
 def load_units():
     st = pd.read_csv(config.STATIONS_CSV)

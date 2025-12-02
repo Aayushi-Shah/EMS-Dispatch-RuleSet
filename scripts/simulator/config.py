@@ -1,8 +1,12 @@
 # scripts/simulator/config.py
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ---------- I/O ----------
-CALLS_PARQUET = Path("data/processed/medical_calls_lemsa.parquet")
+CALLS_PARQUET = Path("data/processed/medical_calls_lemsa_tagged.parquet")
 STATIONS_CSV  = Path("reference/lemsa_stations.csv")
 UNITS_CSV     = Path("reference/lemsa_units_consolidated.csv")
 DUTY_CSV      = Path("reference/lemsa_unit_duty.csv")
@@ -14,8 +18,8 @@ RUNLOG_CSV = Path("reports/runlog.csv")
 ALS_BOUNDARY      = Path("reference/maps/lemsa_als_boundary_wgs84.geojson")
 BLS_BOUNDARY      = Path("reference/maps/lemsa_bls_boundary_wgs84.geojson")
 OVERLAP_BOUNDARY  = Path("reference/maps/lemsa_overlap_boundary_wgs84.geojson")
-URBAN_GEOJSON_PATH = Path("reference/urban_areas_lancaster.geojson")
-RURAL_GEOJSON_PATH = Path("reference/rural_area_lancaster.geojson")
+URBAN_GEOJSON_PATH = Path("reference/maps/urban_areas_lancaster.geojson")
+RURAL_GEOJSON_PATH = Path("reference/maps/rural_area_lancaster.geojson")
 
 # ---------- Field mapping ----------
 TIME_COL_CANDIDATES = [
@@ -75,13 +79,15 @@ ZONE_MULTIPLIER = {
     # e.g., "urban": 1.10, "rural": 0.95
 }
 
-# Optional bottlenecks with fixed penalties (minutes) if a call lies inside bbox
-BOTTLENECKS = [
-    # {"bbox": (lon_min, lat_min, lon_max, lat_max), "penalty_min": 1.5}
-]
-
 # Small multiplicative noise on computed minutes to avoid ties; set 0 to disable
 TT_NOISE_SIGMA = 0.05
+
+# ---- Optional OpenRouteService integration (road network travel) ----
+ORS_USE = False  # set True to attempt ORS calls
+ORS_API_KEY = os.getenv("ORS_API_KEY")
+ORS_PROFILE = "driving-car"
+ORS_BASE_URL = "https://api.openrouteservice.org/v2/matrix"
+ORS_CACHE_PATH = Path(".cache/ors_matrix_cache.json")
 
 # ---- Hospital turnaround (heuristic) ----
 # Hour-of-day multipliers (0..23). Tweak later when you have real ED data.
@@ -97,7 +103,7 @@ TA_ALPHA = 0.10
 TA_LOOKBACK_MIN = 90
 
 # ---------- Transport / non-transport heuristics ----------
-USE_NON_TRANSPORT = True
+USE_NON_TRANSPORT = False
 NON_TRANSPORT_BASE = 0.1          # base probability a call does NOT transport
 NON_TRANSPORT_HIGH_PROB = 0.8     # if keywords indicate likely non-transport
 NON_TRANSPORT_LOW_PROB = 0.0      # if keywords indicate definite transport
@@ -110,7 +116,7 @@ TRANSPORT_KEYWORDS = [
     "cardiac", "chest pain", "no pulse", "not breathing", "respiratory",
     "gunshot", "stabbing", "overdose", "stroke", "seizure",
 ]
-SINGLE_TRANSPORT_PER_CALL = True  # for multi-unit calls, only one unit transports by default
+SINGLE_TRANSPORT_PER_CALL = False  # for multi-unit calls, only one unit transports by default
 
 BOUNDARY_GEOJSONS = [
     "reference/maps/lemsa_als_boundary_wgs84.geojson",

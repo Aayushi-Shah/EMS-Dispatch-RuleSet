@@ -5,6 +5,7 @@ import random
 from datetime import datetime, timezone
 import argparse
 import json
+import os
 import numpy as np
 import pandas as pd
 
@@ -15,7 +16,6 @@ from scripts.simulator.io import (
     load_units,
     segment_calls_by_shift,
     load_unit_duty,
-    tag_calls_with_boundaries,
     tag_calls_in_bounds,
     filter_units_in_bounds,
 )
@@ -37,6 +37,11 @@ def _parse_cli():
         "--max-segments",
         type=int,
         help="If set, simulate at most this many segments (useful for quick runs)",
+    )
+    parser.add_argument(
+        "--max-calls",
+        type=int,
+        help="If set, only process the first N calls (pre-segmentation) for fast screening",
     )
     return parser.parse_args()
 
@@ -243,7 +248,8 @@ def main():
 
     # Load inputs
     calls = load_calls()
-    calls = tag_calls_with_boundaries(calls, config)
+    if getattr(args, "max_calls", None):
+        calls = calls[: args.max_calls]
     units = load_units()
     duty_map = load_unit_duty() if getattr(config, "DUTY_ENFORCEMENT", False) else {}
 
@@ -339,7 +345,11 @@ def main():
     summary_df = weighted_aggregate(per_shift_df, units_count=len(units))
 
     # Create run id BEFORE any run-scoped writes
-    run_id = new_run_id()
+    run_id_prefix = os.getenv("RUN_ID_PREFIX", "").strip()
+    run_id = f"{run_id_prefix}_{new_run_id()}" if run_id_prefix else new_run_id()
+    variant_id_env = os.getenv("VARIANT_ID", "").strip() or None
+    variant_policy_env = os.getenv("VARIANT_POLICY", "").strip() or None
+    variant_complexity_env = os.getenv("VARIANT_COMPLEXITY", "").strip() or None
 
     # ---- Hourly turnaround CSV ----
     hourly_df = pd.DataFrame(ta_hourly_accum)
@@ -377,6 +387,9 @@ def main():
             "POLICY_NAME": policy_name,
             "POLICY_KWARGS": policy_kwargs,
             "MAX_SEGMENTS": max_segments,
+            "VARIANT_ID": variant_id_env,
+            "VARIANT_COMPLEXITY": variant_complexity_env,
+            "VARIANT_POLICY": variant_policy_env,
         },
         "inputs": {
             "CALLS_PARQUET": str(config.CALLS_PARQUET),
@@ -389,6 +402,8 @@ def main():
             "segments": len(groups),
         },
     }
+    if variant_id_env:
+        meta["variant_id"] = variant_id_env
     if hourly_path:
         meta["artifacts"] = {"turnaround_hourly_csv": str(hourly_path)}
 

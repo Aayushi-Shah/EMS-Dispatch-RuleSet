@@ -11,7 +11,8 @@ from scripts.simulator.policies.common import (
     _filter_dispatchable,
     _hav_miles,
     _rule_signals_p4,
-    classify_urban_rural_cached,
+    call_urban_rural,
+    unit_urban_rural,
     r1_eta_minutes,
     r8_busy_load_penalty,
     r10_random_tiebreaker,
@@ -52,7 +53,7 @@ class FairnessFirstPolicy(BasePolicy):
 
         # Call location + area classification
         c_lon, c_lat = float(call["lon"]), float(call["lat"])
-        call_area = classify_urban_rural_cached(c_lon, c_lat)
+        call_area = call_urban_rural(call)
 
         def fairness_penalty_for_unit(u: UnitLike) -> float:
             """
@@ -62,7 +63,7 @@ class FairnessFirstPolicy(BasePolicy):
             Penalty is scaled by fairness_w so rural/underserved calls matter more.
             """
             u_lon, u_lat = float(u.lon), float(u.lat)
-            u_area = classify_urban_rural_cached(u_lon, u_lat)
+            u_area = unit_urban_rural(u)
             d_mi = _hav_miles(c_lon, c_lat, u_lon, u_lat)
 
             # Base penalties by (call_area, unit_area)
@@ -128,7 +129,7 @@ class FairnessFirstPolicy(BasePolicy):
                     "fairness_penalty": f_pen,
                     "eta_component": float(eta_component),
                     "eta_min": float(eta),
-                    "u_area": classify_urban_rural_cached(float(u.lon), float(u.lat)),
+                    "u_area": unit_urban_rural(u),
                     "call_area": call_area,
                 }
             elif abs(f_pen - best_fair) <= 1e-6 and eta < best_eta:
@@ -141,7 +142,7 @@ class FairnessFirstPolicy(BasePolicy):
                     "fairness_penalty": f_pen,
                     "eta_component": float(eta_component),
                     "eta_min": float(eta),
-                    "u_area": classify_urban_rural_cached(float(u.lon), float(u.lat)),
+                    "u_area": unit_urban_rural(u),
                     "call_area": call_area,
                 }
 

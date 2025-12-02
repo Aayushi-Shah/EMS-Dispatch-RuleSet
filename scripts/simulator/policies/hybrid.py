@@ -14,7 +14,8 @@ from scripts.simulator.policies.common import (
     _norm_utype_cached,
     _rule_signals_p5,
     _severity_multiplier,
-    classify_urban_rural,
+    call_urban_rural,
+    unit_urban_rural,
     r1_eta_minutes,
     r8_busy_load_penalty,
     r10_random_tiebreaker,
@@ -102,7 +103,7 @@ class HybridSeverityCoverageFairness(BasePolicy):
 
         # 4) Call geometry + area classification
         c_lon, c_lat = float(call["lon"]), float(call["lat"])
-        call_area = classify_urban_rural(c_lon, c_lat)
+        call_area = call_urban_rural(call)
         call_is_urban = (call_area == "urban")
 
         best_unit: Optional[UnitLike] = None
@@ -122,7 +123,7 @@ class HybridSeverityCoverageFairness(BasePolicy):
                 continue
 
             u_lon, u_lat = float(u.lon), float(u.lat)
-            u_area = classify_urban_rural(u_lon, u_lat)
+            u_area = unit_urban_rural(u)
             d_call_unit = _hav_miles(c_lon, c_lat, u_lon, u_lat)
 
             # --- 5) Choose coverage radius/min_free based on unit area ---
