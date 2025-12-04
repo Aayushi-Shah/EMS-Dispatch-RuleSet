@@ -16,18 +16,19 @@ from scripts.simulator.io import (
     load_units,
     segment_calls_by_shift,
     load_unit_duty,
-    tag_calls_in_bounds,
-    filter_units_in_bounds,
 )
 from scripts.simulator.kpis import weighted_aggregate
 from scripts.simulator.logging_utils import new_run_id, write_artifacts
-from scripts.simulator.geo import load_boundary
 from scripts.policies import select_policy
 
 
 def _parse_cli():
     parser = argparse.ArgumentParser(description="EMS simulator runner")
-    parser.add_argument("--policy", type=str, help="Policy name (overrides config.POLICY_NAME)")
+    parser.add_argument(
+        "--policy",
+        type=str,
+        help="Policy name (overrides config.POLICY_NAME)",
+    )
     parser.add_argument(
         "--policy-kwargs",
         type=str,
@@ -59,6 +60,10 @@ def _hav_miles(lon1, lat1, lon2, lat2) -> float:
 
 
 def _build_initial_unit_state(units: list[Unit]) -> dict[str, dict]:
+    """
+    Initialize per-unit state for segment stitching.
+    abs_free_epoch uses -inf so the first segment treats all units as idle at station.
+    """
     return {
         u.name: {
             "abs_free_epoch": -float("inf"),
@@ -68,6 +73,8 @@ def _build_initial_unit_state(units: list[Unit]) -> dict[str, dict]:
             "station_lat": u.station_lat,
             "utype": u.utype,
             "station": u.station,
+            "zone": getattr(u, "zone", None),
+            "unit_area": getattr(u, "unit_area", None),
         }
         for u in units
     }
@@ -85,11 +92,13 @@ def _is_unit_active_this_segment(
     rules = duty_map.get(unit_name.upper())
     if not rules:
         return True
+
     # day-of-week at segment start (0=Mon..6=Sun)
     dow = datetime.fromtimestamp(seg_start_abs, tz=timezone.utc).weekday()
     # segment window in minutes [start,end)
     sidx = int(seg_key.split("_S")[-1])
     seg_start_min, seg_end_min = config.SHIFT_WINDOWS[sidx]
+
     for days, w_start, w_end in rules:
         if dow in days and not (w_end <= seg_start_min or w_start >= seg_end_min):
             return True
@@ -130,16 +139,25 @@ def run_one_segment(
         )
 
         u = Unit(
-            name=name,
-            utype=s["utype"],
-            station=s["station"],
-            lon=lon,
-            lat=lat,
-            station_lon=s["station_lon"],
-            station_lat=s["station_lat"],
-            busy_until=(remaining_min if remaining_min > 0 else 0.0),
-            can_dispatch=can_dispatch,
-        )
+        name=name,
+        utype=s["utype"],
+        station=s["station"],
+        lon=s["lon"],
+        lat=s["lat"],
+        station_lon=s["station_lon"],
+        station_lat=s["station_lat"],
+        busy_until=float(s.get("busy_until", 0.0)),
+    )
+
+        # NEW: restore zone + unit_area
+        z = s.get("zone")
+        if z is not None:
+            u.zone = z
+
+        ua = s.get("unit_area")
+        if ua is not None:
+            u.unit_area = ua
+
         new_units.append(u)
         sim.add_unit(u)
         if u.busy_until > 0.0:
@@ -168,6 +186,8 @@ def run_one_segment(
             "station_lat": u.station_lat,
             "utype": u.utype,
             "station": u.station,
+            "zone": getattr(u, "zone", None),
+            "unit_area": getattr(u, "unit_area", None),
         }
 
     # KPIs
@@ -253,14 +273,8 @@ def main():
     units = load_units()
     duty_map = load_unit_duty() if getattr(config, "DUTY_ENFORCEMENT", False) else {}
 
-    # Boundary filter (optional master boundary union)
-    boundary = load_boundary(
-        getattr(config, "BOUNDARY_GEOJSONS", None)
-        or getattr(config, "BOUNDARY_GEOJSON", None)
-    )
-    calls = tag_calls_in_bounds(calls, boundary)
-    calls = [c for c in calls if c.get("in_bounds", True)]
-    units = filter_units_in_bounds(units, boundary)
+    # No dynamic boundary tagging here: calls are already filtered/tagged in
+    # medical_calls_lemsa_tagged.parquet and units in lemsa_units_from_calls.csv.
 
     # Segmentation
     groups, seg_start_abs = segment_calls_by_shift(calls)
@@ -301,7 +315,7 @@ def main():
                 f"[DIAG] naive resp est p50={est_p50:.2f} min p90={est_p90:.2f} min"
             )
 
-    # Select policy (name + kwargs come from config)
+    # Select policy (name + kwargs come from config, overridable via CLI)
     policy_name = args.policy or getattr(config, "POLICY_NAME", "nearest_eta")
     policy_kwargs = dict(getattr(config, "POLICY_KWARGS", {}))
     if args.policy_kwargs:
@@ -352,13 +366,13 @@ def main():
     variant_complexity_env = os.getenv("VARIANT_COMPLEXITY", "").strip() or None
 
     # ---- Hourly turnaround CSV ----
-    hourly_df = pd.DataFrame(ta_hourly_accum)
+    ta_hourly_df = pd.DataFrame(ta_hourly_accum)
     hourly_path = None
-    if len(hourly_df):
-        hourly_df = hourly_df.sort_values(["hour", "segment"])
+    if len(ta_hourly_df):
+        ta_hourly_df = ta_hourly_df.sort_values(["hour", "segment"])
         hourly_path = config.RUNS_DIR / run_id / "turnaround_hourly.csv"
         hourly_path.parent.mkdir(parents=True, exist_ok=True)
-        hourly_df.to_csv(hourly_path, index=False)
+        ta_hourly_df.to_csv(hourly_path, index=False)
         print(f"→ turnaround-hourly: {hourly_path}")
 
     # Write artifacts
@@ -376,9 +390,7 @@ def main():
             "TURNAROUND_MIN": config.TURNAROUND_MIN,
             "TURNAROUND_SCALE": config.TURNAROUND_SCALE,
             "MAX_QUEUE_RETRIES": config.MAX_QUEUE_RETRIES,
-            "ROAD_FACTOR_BY_SHIFT": getattr(
-                config, "ROAD_FACTOR_BY_SHIFT", {}
-            ),
+            "ROAD_FACTOR_BY_SHIFT": getattr(config, "ROAD_FACTOR_BY_SHIFT", {}),
             "HOUR_CONGESTION": getattr(config, "HOUR_CONGESTION", {}),
             "ZONES": getattr(config, "ZONES", []),
             "ZONE_MULTIPLIER": getattr(config, "ZONE_MULTIPLIER", {}),
@@ -405,11 +417,11 @@ def main():
     if variant_id_env:
         meta["variant_id"] = variant_id_env
     if hourly_path:
-        meta["artifacts"] = {"turnaround_hourly_csv": str(hourly_path)}
+        meta.setdefault("artifacts", {})["turnaround_hourly_csv"] = str(hourly_path)
 
     paths = write_artifacts(run_id, per_shift_df, summary_df, meta)
 
-    # Optional per-call decision debug (e.g., coverage metrics from policies)
+    # Optional per-call decision debug (e.g., coverage/fairness metrics from policies)
     if decisions_accum:
         decisions_df = pd.DataFrame(decisions_accum)
         decisions_path = config.RUNS_DIR / run_id / "decisions.csv"

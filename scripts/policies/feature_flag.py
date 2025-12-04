@@ -65,8 +65,8 @@ class FeatureFlagPolicy(BasePolicy):
         self.gamma_fairness = kwargs.get("gamma_fairness", 1.5)
 
     def __call__(self, units: List[UnitLike], now_min: float, call: CallDict) -> PolicyResult:
-        signals = _rule_signals_p2(call)  # capability, risk, keep_free
-        fairness_signals = _rule_signals_p4(call)  # fairness_w, keep flags
+        signals = _rule_signals_p2(call, None, now_min)  # capability, risk, keep_free
+        fairness_signals = _rule_signals_p4(call, None, now_min)  # fairness_w, keep flags
         als_capable = signals["als_capable"]
         bls_capable = signals["bls_capable"]
         risk = signals["risk"]

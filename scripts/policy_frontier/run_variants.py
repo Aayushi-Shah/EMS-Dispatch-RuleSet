@@ -13,8 +13,7 @@ from typing import Dict, Any
 
 # Default locations
 VARIANTS_DEFAULT = Path("reference") / "variant_candidates.csv"
-RUNS_ROOT_DEFAULT = Path("reports") / "runs" / "variant_runs"
-
+RUNS_ROOT_DEFAULT = Path("reports") / "runs" / "variant_runs_2"
 
 def parse_kwargs_cell(cell: Any) -> Dict[str, Any]:
     """Parse kwargs from CSV into a dict."""
@@ -54,7 +53,6 @@ def load_variants(csv_path: Path):
 
 def run_variants(
     csv_path: Path,
-    runs_root: Path,
     max_variants: int | None = None,
     max_segments: int | None = None,
 ) -> None:
@@ -65,9 +63,6 @@ def run_variants(
     - Sets VARIANT_KEY / VARIANT_ID / RUN_ID_PREFIX / RUNS_ROOT in env.
     - Uses 'command' column from CSV to build the simulator command.
     """
-    runs_root = runs_root.resolve()
-    runs_root.mkdir(parents=True, exist_ok=True)
-
     count = 0
     for row in load_variants(csv_path):
         if max_variants is not None and count >= max_variants:
@@ -96,16 +91,12 @@ def run_variants(
                 parts.append(f'--policy-kwargs "{kwargs_json}"')
             cmd_str = " ".join(parts)
 
-        # Base command: adjust module if your sim entrypoint differs
-        # Example assumes: python -m scripts.simulator.run
-        base_cmd = [sys.executable, "-m", "scripts.simulator.run"]
+        # Base command: simulator entrypoint
+        base_cmd = [sys.executable, "-m", "scripts.simulator.runner"]
         cmd = base_cmd + shlex.split(cmd_str)
 
         if max_segments is not None:
             cmd += ["--max-segments", str(max_segments)]
-
-        # Force runs_root into the simulator if it supports this arg
-        cmd += ["--runs-root", str(runs_root)]
 
         # Env tagging
         env = os.environ.copy()
@@ -118,9 +109,6 @@ def run_variants(
         # The true identity (policy+kwargs) is in VARIANT_KEY inside meta.json.
         run_id_prefix = vid or policy
         env["RUN_ID_PREFIX"] = run_id_prefix
-
-        # Ensure all runs land under reports/runs/variant_runs
-        env["RUNS_ROOT"] = str(runs_root)
 
         print(f"▶ Running variant {vid or '[no-id]'}")
         print(f"   policy={policy}, kwargs={kwargs_json}")
@@ -141,12 +129,6 @@ def main():
         help="Path to variant_candidates.csv (default: reference/variant_candidates.csv)",
     )
     parser.add_argument(
-        "--runs-root",
-        type=str,
-        default=str(RUNS_ROOT_DEFAULT),
-        help="Root directory for runs (default: reports/runs/variant_runs)",
-    )
-    parser.add_argument(
         "--max-variants",
         type=int,
         default=None,
@@ -162,7 +144,6 @@ def main():
 
     run_variants(
         csv_path=Path(args.variants_csv),
-        runs_root=Path(args.runs_root),
         max_variants=args.max_variants,
         max_segments=args.max_segments,
     )

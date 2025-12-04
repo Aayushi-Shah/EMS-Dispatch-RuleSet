@@ -7,17 +7,17 @@ load_dotenv()
 
 # ---------- I/O ----------
 CALLS_PARQUET = Path("data/processed/medical_calls_lemsa_tagged.parquet")
+UNITS_CSV     = Path("reference/lemsa_units_from_calls.csv")
 STATIONS_CSV  = Path("reference/lemsa_stations.csv")
-UNITS_CSV     = Path("reference/lemsa_units_consolidated.csv")
 DUTY_CSV      = Path("reference/lemsa_unit_duty.csv")
+VARIANTS_CSV  = Path("reference/variant_candidates.csv")
 
-RUNS_DIR   = Path("reports/runs")
+RUNS_DIR   = Path("reports/runs/variant_runs_2")
 RUNLOG_CSV = Path("reports/runlog.csv")
 
 # Optional boundary files (WGS84).
 ALS_BOUNDARY      = Path("reference/maps/lemsa_als_boundary_wgs84.geojson")
 BLS_BOUNDARY      = Path("reference/maps/lemsa_bls_boundary_wgs84.geojson")
-OVERLAP_BOUNDARY  = Path("reference/maps/lemsa_overlap_boundary_wgs84.geojson")
 URBAN_GEOJSON_PATH = Path("reference/maps/urban_areas_lancaster.geojson")
 RURAL_GEOJSON_PATH = Path("reference/maps/rural_area_lancaster.geojson")
 
@@ -99,11 +99,9 @@ TA_HOURLY = {
 }
 # Sensitivity to ED load (0..1). Keep small until calibrated.
 TA_ALPHA = 0.10
-# Lookback window if you later compute rolling ED load (minutes). Not used yet.
-TA_LOOKBACK_MIN = 90
 
 # ---------- Transport / non-transport heuristics ----------
-USE_NON_TRANSPORT = False
+USE_NON_TRANSPORT = True
 NON_TRANSPORT_BASE = 0.1          # base probability a call does NOT transport
 NON_TRANSPORT_HIGH_PROB = 0.8     # if keywords indicate likely non-transport
 NON_TRANSPORT_LOW_PROB = 0.0      # if keywords indicate definite transport
@@ -118,11 +116,50 @@ TRANSPORT_KEYWORDS = [
 ]
 SINGLE_TRANSPORT_PER_CALL = False  # for multi-unit calls, only one unit transports by default
 
-BOUNDARY_GEOJSONS = [
-    "reference/maps/lemsa_als_boundary_wgs84.geojson",
-    "reference/maps/lemsa_bls_boundary_wgs84.geojson",
-    "reference/maps/lemsa_overlap_boundary_wgs84.geojson",
-]
 POLICY_NAME = "nearest_eta"  # or "StationBiasETA", "MaxRadiusCap"
 POLICY_KWARGS = {"penalty_min": 2.0}  # or {"max_mi": 12.0}
 DUTY_ENFORCEMENT = True  # set False to ignore duty windows
+
+# -----------------------------
+# Non-transport calibration
+# -----------------------------
+
+# Severity-bucket baseline non-transport probability.
+# You can tune these later with CAD stats.
+NON_TRANSPORT_BY_SEVERITY = {
+    "high": 0.05,    # ~almost always transported
+    "medium": 0.15,
+    "low": 0.30,
+    "unknown": 0.10,
+}
+
+# Fallback if the dict above isn't used for some reason.
+NON_TRANSPORT_BASE = 0.10
+
+# If ANY of these substrings appear in description/incidentType,
+# push probability TOWARD non-transport (treat-on-scene, standby, etc.).
+NON_TRANSPORT_KEYWORDS = [
+    # A lot of these are likely low-acuity or standby
+    "ems activity",
+    "standby-prearranged ems",
+    "standby-transfer ems",
+    "vehicle accident-no injuries",
+    "vehicle accident-standby",
+]
+
+# If ANY of these substrings appear, push probability TOWARD transport
+# (almost certainly going to hospital).
+TRANSPORT_KEYWORDS = [
+    "emergency transfer-class 1",
+    "emergency transfer-class 2",
+    "rescue-collapse-confined space-trench",
+    "rescue-collapse-confined space-trench-1a",
+    "vehicle accident-entrapment",
+    "vehicle accident-fire",
+    "vehicle accident-mass transit",
+    "vehicle accident-train",
+]
+
+# How aggressive the overrides are
+NON_TRANSPORT_HIGH_PROB = 0.80  # when a NON_TRANSPORT_KEYWORD hits
+NON_TRANSPORT_LOW_PROB = 0.02   # when a TRANSPORT_KEYWORD hits

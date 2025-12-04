@@ -1,9 +1,13 @@
-# scripts/simulator/geo.py
+# scripts/pre_processing/geo_utils.py
 from __future__ import annotations
-import json, os
-from typing import List, Optional, Union
-from shapely.geometry import shape, Point
+
+import json
+import os
+from typing import List, Union
+
+from shapely.geometry import Point, shape
 from shapely.ops import unary_union
+
 
 def _point_in_ring(lon: float, lat: float, ring: list[list[float]]) -> bool:
     # ray casting; ring: [[lon,lat], ...]
@@ -12,10 +16,11 @@ def _point_in_ring(lon: float, lat: float, ring: list[list[float]]) -> bool:
     n = len(ring)
     for i in range(n):
         x1, y1 = ring[i]
-        x2, y2 = ring[(i+1) % n]
-        if ((y1 > y) != (y2 > y)) and (x < (x2-x1)*(y-y1)/(y2-y1 + 1e-12) + x1):
+        x2, y2 = ring[(i + 1) % n]
+        if ((y1 > y) != (y2 > y)) and (x < (x2 - x1) * (y - y1) / (y2 - y1 + 1e-12) + x1):
             inside = not inside
     return inside
+
 
 def _point_in_polygon(lon: float, lat: float, poly: dict) -> bool:
     # GeoJSON Polygon or MultiPolygon
@@ -43,13 +48,14 @@ def _point_in_polygon(lon: float, lat: float, poly: dict) -> bool:
     else:
         raise ValueError("Unsupported geometry type")
 
+
 def load_boundary(paths: Union[str, List[str], None]):
     """
     Accepts:
       - None or [] -> return None (no filtering)
       - str -> single GeoJSON path
       - list[str] -> union of all GeoJSON feature geometries
-    Returns a FeatureCollection dict with one unioned geometry, or None.
+    Returns a unioned shapely geometry, or None.
     """
     if not paths:
         return None
@@ -77,6 +83,7 @@ def load_boundary(paths: Union[str, List[str], None]):
     union_geom = unary_union(geoms)
     return union_geom
 
+
 def in_any_polygon(lon: float, lat: float, geoms) -> bool:
     if not geoms:
         return True
@@ -85,9 +92,6 @@ def in_any_polygon(lon: float, lat: float, geoms) -> bool:
         return any(g and g.contains(pt) for g in geoms)
     return geoms.contains(pt)
 
-# -----------------------------------
-# Load multi-polygon zone boundaries
-# -----------------------------------
 
 def load_zones(zone_files: dict) -> dict:
     """
@@ -96,15 +100,8 @@ def load_zones(zone_files: dict) -> dict:
         "BLS": "reference/lemsa_bls_boundary.geojson",
         "OVERLAP": "reference/lemsa_overlap_boundary.geojson"
     }
-
-    Returns:
-        {
-            "ALS": shapely_polygon,
-            "BLS": shapely_polygon,
-            "OVERLAP": shapely_polygon
-        }
+    Returns dict of shapely polygons (may be None).
     """
-    from shapely.geometry import shape
     zones = {}
     for name, path in zone_files.items():
         try:
@@ -117,12 +114,8 @@ def load_zones(zone_files: dict) -> dict:
 
 
 def zone_lookup_factory(zones: dict):
-    """
-    Returns a function that maps (lon,lat) → zone_name or None
-    Priority: ALS → BLS → OVERLAP
-    """
+    """Return (lon,lat) → zone_name lookup."""
     def lookup(lon, lat):
-        from shapely.geometry import Point
         if lon is None or lat is None:
             return None
         p = Point(lon, lat)

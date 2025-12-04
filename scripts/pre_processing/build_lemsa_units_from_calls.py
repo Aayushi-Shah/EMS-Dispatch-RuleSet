@@ -43,7 +43,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.simulator import config
-from scripts.simulator.geo import load_boundary
+from scripts.pre_processing.geo_utils import load_boundary
 
 
 # -----------------------------

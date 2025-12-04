@@ -1,382 +1,400 @@
 # scripts/simulator/rules.py
 from __future__ import annotations
-from dataclasses import dataclass
-from typing import Dict, Any, List
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterable, Tuple
+
 from scripts.simulator import config
-from scripts.simulator.geo import load_boundary
-from shapely.geometry import Point
-# -----------------------------
-# Rule return object
-# -----------------------------
+
+
 @dataclass
 class RuleResult:
-    # capability flags
-    als_capable: bool | None = None
-    bls_capable: bool | None = None
-
-    # boundaries
-    in_als_boundary: bool | None = None
-    in_bls_boundary: bool | None = None
-    in_overlap_boundary: bool | None = None
-
-    # zone / demand
-    zone: str | None = None
-    call_zone: str | None = None
-    zone_unit_count: int | None = None
-    zone_underprotected: bool | None = None
-    high_demand_flag: bool | None = None
-    high_demand_weight: float | None = None
-
-    # fairness / geography
-    risk_score: float | None = None
-    fairness_weight: float | None = None
-    keep_free_flag: bool | None = None
-    keep_close_flag: bool | None = None
-    rural_flag: bool | None = None
-    urban_flag: bool | None = None
-
-    # tags
-    priority_tag: str | None = None
-    time_of_day_tag: str | None = None
-# -----------------------------
-# R1 — Nearest ETA baseline
-# -----------------------------
-def r1_nearest_eta(call: Dict[str, Any]) -> RuleResult:
     """
-    R1 — Nearest ETA baseline.
-    Just tags that the policy should use ETA-based selection.
+    Aggregated outcome of applying a set of rule primitives to a (call, unit).
+    All fields are optional; policies can pick what they care about.
+
+    Conventions:
+      - eta_score: lower is better (e.g., ETA in minutes or normalized).
+      - coverage_loss: higher means worse coverage after taking this unit.
+      - fairness_weight: multiplicative weight to up/down-weight calls that
+        are currently under-served (e.g., rural/urban gap).
+      - risk_weight: multiplicative weight based on medical risk.
+      - als_pref_score: penalty if we violate ALS/BLS preference.
+      - debug: per-rule trace.
     """
-    return RuleResult(priority_tag="nearest_eta")
+    eta_score: float | None = None
+    coverage_loss: float | None = None
+    fairness_weight: float = 1.0
+    risk_weight: float = 1.0
+    als_pref_score: float | None = None
+    debug: Dict[str, Any] = field(default_factory=dict)
 
 
-# -----------------------------
-# R2 — ALS Capability
-# -----------------------------
+# ----------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------
+def _get_call_area(call: Dict[str, Any]) -> str:
+    # Prefer explicit call_area; fall back to urban_rural.
+    val = (call.get("call_area") or call.get("urban_rural") or "unknown").lower()
+    if val not in {"urban", "rural", "unknown"}:
+        return "unknown"
+    return val
 
-def r2_als_capability(call: Dict[str, Any]) -> RuleResult:
+
+def _get_unit_area(unit: Any) -> str:
+    val = getattr(unit, "unit_area", None)
+    if not val:
+        return "unknown"
+    val = str(val).lower()
+    if val not in {"urban", "rural", "unknown"}:
+        return "unknown"
+    return val
+
+
+def _get_call_zone(call: Dict[str, Any]) -> str | None:
+    z = call.get("zone")
+    return str(z) if z is not None else None
+
+
+def _get_unit_zone(unit: Any) -> str | None:
+    z = getattr(unit, "zone", None)
+    return str(z) if z is not None else None
+
+
+def _get_risk_score(call: Dict[str, Any]) -> float:
+    rs = call.get("risk_score")
+    try:
+        return float(rs) if rs is not None else 0.0
+    except Exception:
+        return 0.0
+
+
+def _get_severity_bucket(call: Dict[str, Any]) -> str:
+    val = (call.get("severity_bucket") or "unknown").lower()
+    if val not in {"low", "medium", "high", "unknown"}:
+        return "unknown"
+    return val
+
+
+def _get_tod_hour(call: Dict[str, Any]) -> int | None:
+    tod_min = call.get("tod_min")
+    try:
+        m = int(tod_min)
+    except Exception:
+        return None
+    return (m // 60) % 24
+
+
+# ----------------------------------------------------------------------
+# Individual rules R1–R10
+# These are intentionally simple and only use tagged fields, no geometry.
+# ----------------------------------------------------------------------
+def R1_nearest_eta(call: Dict[str, Any], unit: Any, now_min: float) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
-    R2 — ALS capability:
-      • Does ALS *geographically* cover this incident?
-      • Uses ALS + OVERLAP polygons tagged in io.py.
-      • Severity is handled by R9, not here.
+    R1: Nearest-ETA style score.
+    The actual ETA calculation should be done in the policy using traffic.travel_minutes;
+    here we just pass through an 'eta_min' value if the policy provided it in call['eta_hint'].
+    """
+    eta = call.get("eta_hint")  # optional precomputed ETA in minutes
+    try:
+        eta_val = float(eta) if eta is not None else None
+    except Exception:
+        eta_val = None
+
+    contrib: Dict[str, Any] = {}
+    if eta_val is not None:
+        contrib["eta_score"] = eta_val
+
+    dbg = {
+        "rule": "R1_nearest_eta",
+        "eta_hint": eta_val,
+    }
+    return contrib, dbg
+
+
+def R2_als_bls_capability(call: Dict[str, Any], unit: Any, now_min: float) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    R2: ALS/BLS capability vs call preference.
+    Penalize mismatch: high-risk/ALS-preferred calls being covered by BLS units.
+    This does NOT enforce hard constraints; policies can use als_pref_score.
+    """
+    risk = _get_risk_score(call)
+    sev = _get_severity_bucket(call)
+    pref = (call.get("preferred_unit_type") or "").upper()
+    utype = (getattr(unit, "utype", "") or "").upper()
+
+    # Default: no penalty
+    penalty = 0.0
+
+    # If call prefers ALS (or high-risk), penalize BLS
+    if risk >= getattr(config, "HIGH_RISK_THRESHOLD", 0.75) or sev == "high" or pref == "ALS":
+        if utype == "BLS":
+            penalty = getattr(config, "ALS_MISMATCH_PENALTY", 1.0)
+
+    contrib = {"als_pref_score": penalty}
+    dbg = {
+        "rule": "R2_als_bls_capability",
+        "risk_score": risk,
+        "severity_bucket": sev,
+        "preferred_unit_type": pref,
+        "unit_type": utype,
+        "als_pref_score": penalty,
+    }
+    return contrib, dbg
+
+
+def R3_boundary_guardrails(call: Dict[str, Any], unit: Any, now_min: float) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    R3: Simple ALS/BLS boundary awareness.
+    Uses pre-tagged boolean flags from the call; does not load any polygons.
     """
     in_als = bool(call.get("in_als_boundary", False))
-    in_overlap = bool(call.get("in_overlap_boundary", False))
-
-    als_capable = in_als or in_overlap
-
-    return RuleResult(
-        als_capable=als_capable,
-        in_als_boundary=in_als,
-        in_overlap_boundary=in_overlap,
-    )
-
-# -----------------------------
-# R3 — BLS Capability
-# -----------------------------
-def r3_bls_capability(call: Dict[str, Any]) -> RuleResult:
-    """
-    R3 — BLS capability:
-      • Does BLS *geographically* cover this incident?
-      • Uses BLS + OVERLAP polygons.
-      • No clinical decision here.
-    """
     in_bls = bool(call.get("in_bls_boundary", False))
     in_overlap = bool(call.get("in_overlap_boundary", False))
+    utype = (getattr(unit, "utype", "") or "").upper()
 
-    bls_capable = in_bls or in_overlap
+    penalty = 0.0
+    if in_als and utype == "BLS":
+        penalty = getattr(config, "ALS_BOUNDARY_BLS_PENALTY", 1.0)
+    if in_bls and utype == "ALS":
+        penalty = getattr(config, "BLS_BOUNDARY_ALS_PENALTY", 0.5)
+    if in_overlap:
+        penalty *= getattr(config, "OVERLAP_BOUNDARY_MULT", 0.5)
 
-    return RuleResult(
-        bls_capable=bls_capable,
-        in_bls_boundary=in_bls,
-        in_overlap_boundary=in_overlap,
-    )
+    contrib = {"boundary_penalty": penalty}
+    dbg = {
+        "rule": "R3_boundary_guardrails",
+        "in_als_boundary": in_als,
+        "in_bls_boundary": in_bls,
+        "in_overlap_boundary": in_overlap,
+        "unit_type": utype,
+        "boundary_penalty": penalty,
+    }
+    return contrib, dbg
 
-# -----------------------------
-# R4 — ZONE COVERAGE PROTECTION
-# -----------------------------
-def r4_zone_coverage(
+
+def R4_zone_coverage(call: Dict[str, Any], unit: Any, now_min: float) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    R4: Zone-aware coverage penalty.
+    If unit leaves its 'home' zone to cover another zone, add a coverage_loss.
+    """
+    call_zone = _get_call_zone(call)
+    unit_zone = _get_unit_zone(unit)
+
+    coverage_loss = 0.0
+    if unit_zone and call_zone and unit_zone != call_zone:
+        coverage_loss = getattr(config, "CROSS_ZONE_COVERAGE_LOSS", 1.0)
+
+    contrib = {"coverage_loss": coverage_loss}
+    dbg = {
+        "rule": "R4_zone_coverage",
+        "call_zone": call_zone,
+        "unit_zone": unit_zone,
+        "coverage_loss": coverage_loss,
+    }
+    return contrib, dbg
+
+
+def R5_fairness(call: Dict[str, Any], unit: Any, now_min: float) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    R5: Fairness – use tagged call_area / urban_rural, no geometry.
+    Idea: boost calls in under-served areas (e.g., rural) by a multiplicative weight.
+
+    We DO NOT measure fairness gap inside the rule. Instead, we:
+      - Tag each decision with call_area + unit_area (DES debug).
+      - Use build_full_kpis to measure rural vs urban response gaps.
+
+    Here we only define a static prior weight, e.g.:
+      - rural: fairness_weight > 1
+      - urban: fairness_weight = 1
+    """
+    call_area = _get_call_area(call)         # "urban" / "rural" / "unknown"
+    unit_area = _get_unit_area(unit)         # from unit.unit_area
+    base = 1.0
+
+    rural_boost = getattr(config, "FAIRNESS_RURAL_WEIGHT", 1.2)
+    urban_boost = getattr(config, "FAIRNESS_URBAN_WEIGHT", 1.0)
+
+    if call_area == "rural":
+        fairness_weight = rural_boost
+    elif call_area == "urban":
+        fairness_weight = urban_boost
+    else:
+        fairness_weight = base
+
+    contrib = {"fairness_weight": fairness_weight}
+    dbg = {
+        "rule": "R5_fairness",
+        "call_area": call_area,
+        "unit_area": unit_area,
+        "fairness_weight": fairness_weight,
+    }
+    return contrib, dbg
+
+
+def R6_high_demand_zone(call: Dict[str, Any], unit: Any, now_min: float) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    R6: High-demand zone boost.
+    Uses a simple config-driven list of high-demand zones (e.g., downtown).
+    """
+    call_zone = _get_call_zone(call)
+    high_demand_zones = getattr(config, "HIGH_DEMAND_ZONES", [])
+    boost = 1.0
+    if call_zone in high_demand_zones:
+        boost = getattr(config, "HIGH_DEMAND_WEIGHT", 1.1)
+
+    contrib = {"high_demand_weight": boost}
+    dbg = {
+        "rule": "R6_high_demand_zone",
+        "call_zone": call_zone,
+        "high_demand_weight": boost,
+    }
+    return contrib, dbg
+
+
+def R7_overcoverage_penalty(call: Dict[str, Any], unit: Any, now_min: float) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    R7: Over-coverage penalty.
+    Placeholder: penalize sending units from zones marked as 'scarce'.
+    """
+    unit_zone = _get_unit_zone(unit)
+    scarce_zones = getattr(config, "SCARCE_ZONES", [])
+    penalty = 0.0
+    if unit_zone in scarce_zones:
+        penalty = getattr(config, "SCARCE_ZONE_PENALTY", 1.0)
+
+    contrib = {"overcoverage_penalty": penalty}
+    dbg = {
+        "rule": "R7_overcoverage_penalty",
+        "unit_zone": unit_zone,
+        "overcoverage_penalty": penalty,
+    }
+    return contrib, dbg
+
+
+def R8_time_of_day(call: Dict[str, Any], unit: Any, now_min: float) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    R8: Time-of-day adjustment.
+    Example: additional weight during peak hours.
+    """
+    hour = _get_tod_hour(call)
+    peak_hours = getattr(config, "PEAK_HOURS", [7, 8, 9, 16, 17, 18])
+    peak_weight = getattr(config, "PEAK_HOUR_WEIGHT", 1.1)
+
+    weight = 1.0
+    if hour is not None and hour in peak_hours:
+        weight = peak_weight
+
+    contrib = {"tod_weight": weight}
+    dbg = {
+        "rule": "R8_time_of_day",
+        "hour": hour,
+        "tod_weight": weight,
+    }
+    return contrib, dbg
+
+
+def R9_risk_weight(call: Dict[str, Any], unit: Any, now_min: float) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    R9: Risk-based weighting using risk_score / severity_bucket.
+    High severity / high risk -> higher weight.
+    """
+    risk = _get_risk_score(call)
+    sev = _get_severity_bucket(call)
+
+    base = 1.0
+    if sev == "high" or risk >= getattr(config, "HIGH_RISK_THRESHOLD", 0.75):
+        weight = getattr(config, "HIGH_RISK_WEIGHT", 1.5)
+    elif sev == "medium":
+        weight = getattr(config, "MEDIUM_RISK_WEIGHT", 1.2)
+    else:
+        weight = base
+
+    contrib = {"risk_weight": weight}
+    dbg = {
+        "rule": "R9_risk_weight",
+        "risk_score": risk,
+        "severity_bucket": sev,
+        "risk_weight": weight,
+    }
+    return contrib, dbg
+
+
+def R10_debug_tag(call: Dict[str, Any], unit: Any, now_min: float) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """
+    R10: No-op rule used to just capture call/unit context into debug.
+    Policies can include this to make sure decisions.csv has enough features.
+    """
+    contrib: Dict[str, Any] = {}
+    dbg = {
+        "rule": "R10_debug_tag",
+        "call_id": call.get("id"),
+        "unit_name": getattr(unit, "name", None),
+        "unit_type": getattr(unit, "utype", None),
+        "call_area": _get_call_area(call),
+        "unit_area": _get_unit_area(unit),
+        "zone_call": _get_call_zone(call),
+        "zone_unit": _get_unit_zone(unit),
+    }
+    return contrib, dbg
+
+
+# Registry
+RULES = {
+    "R1": R1_nearest_eta,
+    "R2": R2_als_bls_capability,
+    "R3": R3_boundary_guardrails,
+    "R4": R4_zone_coverage,
+    "R5": R5_fairness,
+    "R6": R6_high_demand_zone,
+    "R7": R7_overcoverage_penalty,
+    "R8": R8_time_of_day,
+    "R9": R9_risk_weight,
+    "R10": R10_debug_tag,
+}
+
+
+def apply_rules(
+    rule_names: Iterable[str],
     call: Dict[str, Any],
-    units: List[Any],
-    zone_lookup: Any,         # function: (lon,lat) → zone_id or None
-    min_units_per_zone: int = 1,
+    unit: Any,
+    now_min: float,
 ) -> RuleResult:
     """
-    R4: Prevent draining a zone below minimum coverage unless unavoidable.
+    Apply a set of rules to (call, unit) and merge outputs into a RuleResult.
 
-    Outputs:
-        call_zone: zone of incident
-        zone_unit_count: number of free units in that zone
-        zone_underprotected: True if units < min_units_per_zone
-
-    This rule needs access to current units → NOT used via apply_rules().
-    Call it directly from the policy when scoring candidate units.
+    Policies can call this, then combine:
+      - result.eta_score
+      - result.coverage_loss
+      - result.fairness_weight
+      - result.risk_weight
+      - result.als_pref_score
+    into a final scalar score or priority.
     """
-    lon = call.get("lon")
-    lat = call.get("lat")
-    zone = zone_lookup(lon, lat) if (lon is not None and lat is not None) else None
+    out = RuleResult()
+    all_debug: Dict[str, Any] = {}
 
-    count = 0
-    if zone is not None:
-        for u in units:
-            # requires Unit to have .zone and .busy_until
-            if getattr(u, "zone", None) == zone and getattr(u, "busy_until", 0.0) <= 0.01:
-                count += 1
-
-    underprotected = (zone is not None and count < min_units_per_zone)
-
-    return RuleResult(
-        call_zone=zone,
-        zone_unit_count=count,
-        zone_underprotected=underprotected,
-    )
-
-try:
-    URBAN_POLY = load_boundary(str(config.URBAN_BOUNDARY))
-except Exception:
-    URBAN_POLY = None
-
-def r5_fairness(call: Dict[str, Any]) -> RuleResult:
-    lon, lat = call.get("lon"), call.get("lat")
-    if lon is None or lat is None or URBAN_POLY is None:
-        return RuleResult()
-
-    p = Point(lon, lat)
-    is_urban = URBAN_POLY.contains(p)
-
-    return RuleResult(
-        rural_flag=not is_urban,
-        urban_flag=is_urban,
-        fairness_weight=1.3 if not is_urban else 1.0  # rural gets a small boost
-    )
-
-HIGH_DEMAND_ZONES = {"ALS", "OVERLAP"}
-
-
-def r6_zone_penalty(call: Dict[str, Any]) -> RuleResult:
-    """
-    R6: High-demand zone penalty / tag.
-
-    Input:
-        call["zone"] is tagged by io.load_calls() via ZONE_LOOKUP:
-          e.g., "ALS", "BLS", "OVERLAP", or None.
-
-    Output:
-        high_demand_flag    – True if call is in a high-demand zone.
-        high_demand_weight  – Multiplier policies can use to boost
-                              or penalize pulling units *out of* that zone.
-    """
-    zone = call.get("zone")
-    is_high = zone in HIGH_DEMAND_ZONES
-
-    # Simple default: slight boost for calls in high-demand zones
-    weight = 1.2 if is_high else 1.0
-
-    return RuleResult(
-        zone=zone,
-        high_demand_flag=is_high,
-        high_demand_weight=weight,
-    )
-
-# -----------------------------
-# R7 — Low-priority calls keep nearest unit available
-# -----------------------------
-def r7_keep_close_for_high_priority(call: Dict[str, Any]) -> RuleResult:
-    """
-    R7: For low-priority calls, try to *keep the very closest units free*.
-
-    Assumptions:
-      - CAD priority: 1 = highest, larger numbers = lower priority.
-      - We'll treat priority >= 3 as "low" for now (tunable).
-
-    Output:
-      keep_close_flag = True  -> policy should *avoid* consuming the very nearest unit
-                                 if there is a slightly farther alternative.
-      keep_close_flag = False -> no special protection; OK to use nearest.
-    """
-    prio_raw = call.get("priority", None)
-
-    try:
-        priority = int(prio_raw)
-    except (TypeError, ValueError):
-        # If we can't parse it, treat as mid priority (no special handling)
-        priority = 2
-
-    is_low_priority = priority >= 3
-    return RuleResult(
-        keep_close_flag=is_low_priority
-    )
-
-# -----------------------------
-# R8 — Hospital load rule (keep some units clear)
-# -----------------------------
-
-# Approximate busy ED hours (tunable)
-BUSY_HOURS = {10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21}  # 10:00–21:59
-
-def r8_hospital_load(call: Dict[str, Any]) -> RuleResult:
-    """
-    R8: Adjust behavior based on approximate hospital load.
-
-    Heuristic:
-      - Use call["tod_min"] (minutes since midnight) to derive hour-of-day.
-      - If hour is in BUSY_HOURS, assume ED is busier.
-    
-    Outputs:
-      fairness_weight: >1.0 during busy hours, 1.0 otherwise.
-      keep_free_flag:  True during busy hours to signal policies to avoid
-                       unnecessarily committing extra units to long transports.
-    """
-    tod_min = call.get("tod_min", None)
-    try:
-        tod_min = int(tod_min)
-    except (TypeError, ValueError):
-        # If no valid time-of-day, do nothing special
-        return RuleResult()
-
-    hour = (tod_min // 60) % 24
-    busy = hour in BUSY_HOURS
-
-    fairness_weight = 1.2 if busy else 1.0
-    keep_free = busy  # “be conservative” when ED is busy
-
-    return RuleResult(
-        fairness_weight=fairness_weight,
-        keep_free_flag=keep_free
-    )
-
-# -----------------------------
-# R9 — Risk-score rule (severity → weight)
-# -----------------------------
-
-# Simple keyword buckets; tune once you inspect real CAD text
-R9_SEVERE = {
-    "cardiac", "chest pain", "not breathing", "no pulse",
-    "respiratory arrest", "gunshot", "stabbing", "overdose",
-    "unconscious", "seizure", "stroke"
-}
-
-R9_MODERATE = {
-    "difficulty breathing", "shortness of breath", "altered mental status",
-    "fall", "trauma", "bleeding", "vehicle accident", "mvc",
-    "assault", "head injury"
-}
-
-R9_LOW = {
-    "sick person", "flu", "fever", "weakness", "abdominal pain",
-    "general illness", "public assist", "lift assist", "minor injury",
-    "ankle", "wrist", "laceration", "non-emergent"
-}
-
-def r9_risk_score(call: Dict[str, Any]) -> RuleResult:
-    """
-    R9: Assign a continuous-ish risk score in [0,1] based on:
-      1) CAD priority code if present (1–4, or 'alpha/bravo/...').
-      2) Fallback to description keyword buckets.
-
-    Higher = more severe = policy should favor lower ETA, ALS, etc.
-    """
-
-    desc = str(call.get("description", "")).lower()
-    incident_type = str(call.get("incidentType", "")).lower()
-    pri_raw = call.get("priority") or call.get("cad_priority") or call.get("determinant")
-
-    # --- 1) Try to use explicit CAD priority if we have it ---
-    score_from_priority = None
-    if pri_raw is not None:
-        p = str(pri_raw).strip().lower()
-
-        # Numeric style: 1 (highest) .. 4 (lowest)
-        if p.isdigit():
-            n = int(p)
-            # compress into [0.2, 0.95]
-            if n <= 1:
-                score_from_priority = 0.95
-            elif n == 2:
-                score_from_priority = 0.75
-            elif n == 3:
-                score_from_priority = 0.5
-            else:
-                score_from_priority = 0.25
-
-        else:
-            # Determinant style: alpha/bravo/charlie/delta/echo, etc.
-            if p.startswith("e"):   # Echo — life threatening
-                score_from_priority = 0.98
-            elif p.startswith("d"):
-                score_from_priority = 0.9
-            elif p.startswith("c"):
-                score_from_priority = 0.75
-            elif p.startswith("b"):
-                score_from_priority = 0.5
-            elif p.startswith("a"):
-                score_from_priority = 0.3
-
-    # --- 2) Fallback: text buckets from description / incident_type ---
-    if score_from_priority is None:
-        text = f"{desc} {incident_type}"
-        t = text.lower()
-
-        if any(k in t for k in R9_SEVERE):
-            score = 0.9
-        elif any(k in t for k in R9_MODERATE):
-            score = 0.6
-        elif any(k in t for k in R9_LOW):
-            score = 0.3
-        else:
-            score = 0.15  # unknown → low-but-nonzero
-    else:
-        score = score_from_priority
-
-    return RuleResult(risk_score=score)
-
-def r10_time_of_day(call: Dict[str, Any]) -> RuleResult:
-    """
-    R10: Time-of-day modifier.
-
-    Example convention:
-      - Night:   00:00–06:00  -> tag 'night'
-      - Peak:    06:00–10:00, 16:00–20:00 -> tag 'peak'
-      - Offpeak: everything else.
-
-    Policies can use time_of_day_tag to bias choices.
-    """
-
-    tod = int(call.get("tod_min", 0))  # minutes since midnight
-    hour = tod // 60
-
-    if 0 <= hour < 6:
-        tag = "night"
-    elif 6 <= hour < 10 or 16 <= hour < 20:
-        tag = "peak"
-    else:
-        tag = "offpeak"
-
-    return RuleResult(time_of_day_tag=tag)
-
-
-# -----------------------------
-# RULE REGISTRY FOR PRUNING (per-call rules only)
-# -----------------------------
-RULES = {
-    "R1": r1_nearest_eta,
-    "R2": r2_als_capability,
-    "R3": r3_bls_capability,
-    # R4 is intentionally NOT in this registry because it needs units+zone_lookup.
-    "R5": r5_fairness,
-    "R6": r6_zone_penalty,
-    "R7": r7_keep_close_for_high_priority,
-    "R8": r8_hospital_load,
-    "R9": r9_risk_score,
-    "R10": r10_time_of_day,
-}
-
-def apply_rules(rule_names: List[str], call: Dict[str, Any]) -> List[RuleResult]:
-    """Run selected per-call rules (R1–R3, etc.) and return RuleResults."""
-    results: List[RuleResult] = []
-    for r in rule_names:
-        fn = RULES.get(r)
+    for name in rule_names:
+        fn = RULES.get(name)
         if fn is None:
             continue
-        results.append(fn(call))
-    return results
+        contrib, dbg = fn(call, unit, now_min)
+        all_debug[name] = dbg
+
+        if "eta_score" in contrib:
+            out.eta_score = contrib["eta_score"]
+        if "coverage_loss" in contrib:
+            out.coverage_loss = (
+                (out.coverage_loss or 0.0) + float(contrib["coverage_loss"])
+            )
+        if "fairness_weight" in contrib:
+            out.fairness_weight *= float(contrib["fairness_weight"])
+        if "risk_weight" in contrib:
+            out.risk_weight *= float(contrib["risk_weight"])
+        if "als_pref_score" in contrib:
+            out.als_pref_score = (out.als_pref_score or 0.0) + float(
+                contrib["als_pref_score"]
+            )
+
+    out.debug = all_debug
+    return out
