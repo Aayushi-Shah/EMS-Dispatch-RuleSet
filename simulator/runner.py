@@ -427,7 +427,7 @@ def apply_global_demand_stress(
 # Policy factory
 # -----------------------
 
-def make_policy(name: str) -> DispatchPolicy:
+def make_policy(name: str, k_minutes: float | None = None) -> DispatchPolicy:
     """Return a DispatchPolicy instance by name."""
     normalized = name.lower()
 
@@ -445,7 +445,17 @@ def make_policy(name: str) -> DispatchPolicy:
                 name, ", ".join(sorted(policy_map))
             )
         )
-    policy = cls()
+
+    # Pass k_minutes if the policy accepts it
+    if k_minutes is not None and normalized in (
+        "nearest_eta_r1",
+        "nearest_eta_r2",
+        "nearest_eta_r1_r2",
+    ):
+        policy = cls(k_minutes=k_minutes)
+    else:
+        policy = cls()
+
     setattr(policy, "name", getattr(policy, "name", normalized))
     return policy
 
@@ -514,6 +524,7 @@ def run_simulation(
     demand_factor: float = 1.0,
     scenario_name: str = "unknown",
     fleet_factor: int = 1,
+    k_minutes: float | None = None,
 ) -> dict:
     """
     One-pass simulation using the given policy.
@@ -542,7 +553,7 @@ def run_simulation(
     units = apply_supply_stress(units, als_frac=als_frac, bls_frac=bls_frac, seed=seed)
     units = expand_fleet(units, fleet_factor=fleet_factor)
 
-    policy = make_policy(policy_name)
+    policy = make_policy(policy_name, k_minutes=k_minutes)
     setattr(policy, "scenario_name", scenario_name)
     select_unit_fn = make_select_unit_fn(policy, units)
     sim = DES(select_unit_fn=select_unit_fn)
@@ -632,6 +643,12 @@ def main():
         default=1,
         help="Replication factor for 'infinite' fleet baseline (1 = normal fleet).",
     )
+    parser.add_argument(
+        "--k-minutes",
+        type=float,
+        default=None,
+        help="Value of k_minutes for policies that use it.",
+    )
     args = parser.parse_args()
 
     metrics = run_simulation(
@@ -643,6 +660,7 @@ def main():
         demand_factor=args.demand_factor,
         scenario_name=args.scenario_name,
         fleet_factor=args.fleet_factor,
+        k_minutes=args.k_minutes,
     )
 
     print(
@@ -650,6 +668,7 @@ def main():
         f"als_frac={args.als_frac}, bls_frac={args.bls_frac}, "
         f"demand_factor={args.demand_factor}, "
         f"demand_factor={args.demand_factor}, fleet_factor={args.fleet_factor}, "
+        f"k_minutes={args.k_minutes}, "
         f"n_calls={metrics['n_calls']}, "
         f"missed_calls={metrics['missed_calls']}, "
         f"n_decisions={len(metrics['decisions'])}"

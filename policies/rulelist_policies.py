@@ -22,7 +22,7 @@ from policies.rule_templates import (
 # Shared helper: compute feasible units, ETA map, and nearest unit
 # -------------------------------------------------------------------
 
-K_MINUTES_DEFAULT: float = 7.72  # shared K unless overridden per-policy
+K_MINUTES_DEFAULT: float = 8.0  # shared K unless overridden per-policy
 
 
 def _compute_feasible_and_etas(
