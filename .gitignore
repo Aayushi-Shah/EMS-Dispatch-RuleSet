@@ -1,0 +1,48 @@
+# Ignore GitHub metadata and Copilot instruction drafts
+.github/
+
+# Typical Python ignores
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtualenv
+ems-env/
+
+# Results and large outputs
+results/
+# env
+.env
+
+# data
+/data/raw/*
+!/data/raw/.keep
+/data/interim/*
+!/data/interim/.keep
+/data/processed/*
+!/data/processed/.keep
+
+# maps and reference data
+/maps/*
+!/maps/.keep
+
+# reports (keep text, ignore large)
+*.parquet
+*.feather
+*.arrow
+*.log
+
+*.pyc
+__pycache__/
+scripts/__pycache__/
+scripts/simulator/__pycache__/
+scripts/simulator/policies/__pycache__/
+scripts/simulator/tools/__pycache__/
+.cache/
+
+# notebooks
+.ipynb_checkpoints/
+
+results/*

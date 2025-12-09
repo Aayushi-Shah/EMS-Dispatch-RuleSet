@@ -1,0 +1,16 @@
+{
+  "include": [
+    "scripts",
+    "config"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "ems-env"
+  ],
+  "extraPaths": [
+    "."
+  ],
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "basic"
+}
+
