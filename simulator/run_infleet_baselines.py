@@ -11,8 +11,10 @@ SCENARIOS = [
     {"scenario": "S0_baseline",       "demand_factor": 1.0},
     {"scenario": "S1_demand_1.5x",    "demand_factor": 1.5},
     {"scenario": "S2_demand_2x",      "demand_factor": 2.0},
-    {"scenario": "S3_supply_0.7x",    "demand_factor": 1.0},
-    {"scenario": "S4_supply_0.5x",    "demand_factor": 1.0},
+    {"scenario": "S3_supply_0.7x_als", "demand_factor": 1.0},
+    {"scenario": "S4_supply_0.5x_als", "demand_factor": 1.0},
+    {"scenario": "S5_supply_0.7x_bls",   "demand_factor": 1.0},
+    {"scenario": "S6_supply_0.5x_bls",    "demand_factor": 1.0},
 ]
 
 

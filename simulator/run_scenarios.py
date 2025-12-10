@@ -13,6 +13,7 @@ POLICIES = [
     "nearest_eta_r1",       # R1: BLS for low-priority
     "nearest_eta_r2",       # R2: protect last ALS in critical muni
     "nearest_eta_r1_r2",
+    "nearest_eta_reserve_als",  # R3: reserve ALS for highs
 ]
 
 # Scenario definitions
@@ -21,8 +22,10 @@ SCENARIOS = [
     ("S0_baseline",    1.0, 1.0, 1.0),
     ("S1_demand_1.5x", 1.0, 1.0, 1.5),
     ("S2_demand_2x",   1.0, 1.0, 2.0),
-    ("S3_supply_0.7x", 0.7, 0.7, 1.0),
-    ("S4_supply_0.5x", 0.5, 0.5, 1.0)
+    ("S3_supply_0.7x_als", 0.7, 1.0, 1.0),
+    ("S4_supply_0.5x_als", 0.5, 1.0, 1.0),
+    ("S5_supply_0.7x_bls", 1.0, 0.7, 1.0),
+    ("S6_supply_0.5x_bls", 1.0, 0.5, 1.0)
 ]
 
 

@@ -21,6 +21,7 @@ from policies.rulelist_policies import (
     NearestETAR1Policy,
     NearestETAR2Policy,
     NearestETAR1R2Policy,
+    NearestETAReserveALSPolicy,
 )
 
 # -----------------------
@@ -37,6 +38,13 @@ class SimStateAdapter:
     def __init__(self, units: List[Unit]):
         self.units: List[Unit] = units
         self.now_min: float = 0.0  # updated by the wrapper before each policy call
+        raw_crit = getattr(config, "CRITICAL_MUNICIPALITIES_STD", None)
+        if raw_crit:
+            self.critical_munis_std = {
+                str(m).strip().upper() for m in raw_crit if isinstance(m, str)
+            }
+        else:
+            self.critical_munis_std = set()
 
     def _get_call_area(self, call: dict) -> str:
         area = (call.get("call_area")
@@ -436,6 +444,7 @@ def make_policy(name: str, k_minutes: float | None = None) -> DispatchPolicy:
         "nearest_eta_r1": NearestETAR1Policy,
         "nearest_eta_r2": NearestETAR2Policy,
         "nearest_eta_r1_r2": NearestETAR1R2Policy,
+        "nearest_eta_reserve_als": NearestETAReserveALSPolicy,
     }
 
     cls = policy_map.get(normalized)
@@ -451,6 +460,7 @@ def make_policy(name: str, k_minutes: float | None = None) -> DispatchPolicy:
         "nearest_eta_r1",
         "nearest_eta_r2",
         "nearest_eta_r1_r2",
+        "nearest_eta_reserve_als",
     ):
         policy = cls(k_minutes=k_minutes)
     else:

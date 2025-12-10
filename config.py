@@ -34,6 +34,8 @@ HOSPITAL_LON = -76.304382
 # ---------- Simulation controls ----------
 SHIFT_WINDOWS = [(0, 480), (480, 960), (960, 1440)]  # [00-08), [08-16), [16-24)
 MAX_QUEUE_RETRIES = 15
+MAX_QUEUE_WAIT_MIN = 20.0          # abandon after 20 minutes in queue
+QUEUE_RETRY_INTERVAL_MIN = 1.0     # retry cadence while waiting
 
 # -----------------------------
 # Scene / transport speeds

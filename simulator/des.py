@@ -410,6 +410,11 @@ class DES:
 
         transport_unit_name = call.get("_transport_unit")
 
+        # Queue controls
+        max_wait_min = float(getattr(config, "MAX_QUEUE_WAIT_MIN", 20.0))
+        retry_interval = float(getattr(config, "QUEUE_RETRY_INTERVAL_MIN", 1.0))
+        max_retries = int(getattr(config, "MAX_QUEUE_RETRIES", 0))
+
         # Simple risk flags based on severity bucket; configurable via HIGH_SEVERITY_BUCKETS
         sev = (call.get("severity_bucket") or "unknown").lower()
         high_buckets = [
@@ -425,6 +430,8 @@ class DES:
 
         # Try to assign as many units as needed at this event time
         local_assigned = 0
+        scheduled_retry = False
+        abandoned = False
         while remaining > 0:
             # Coverage snapshot BEFORE this assignment
             cov = self._snapshot_idle_counts(call)
@@ -446,44 +453,59 @@ class DES:
 
             # If no unit is available/feasible, log a failure decision and stop trying
             if u is None:
-                reason = None
-                if isinstance(debug, dict):
-                    reason = debug.get("reason")
-                decision_row = {
-                    "tmin": float(self.t),
-                    "call_id": call["id"],
-                    "call_zone": call.get("zone"),
-                    "call_area": call.get("call_area"),
-                    "call_urban_rural": call.get("urban_rural"),
-                    "call_risk_score": call.get("risk_score"),
-                    "call_severity_bucket": call.get("severity_bucket"),
-                    "call_preferred_unit_type": call.get("preferred_unit_type"),
-                    "call_units_needed": units_needed,
-                    # No unit assigned
-                    "unit": None,
-                    "unit_type": None,
-                    "unit_zone": None,
-                    "unit_area": None,
-                    "unit_station": None,
-                    "resp_min": float("inf"),
-                    "queue_delay_min": float(queue_delay),
-                    "unit_will_transport": False,
-                    "call_transport_flag": bool(transport_flag),
-                    "busy_total_min": 0.0,
-                    # Coverage snapshot
-                    **cov,
-                    "idle_units_in_call_muni_before": idle_units_in_call_muni_before,
-                    # Risk flags
-                    "call_is_high": bool(call_is_high),
-                    "call_is_low": bool(call_is_low),
-                    # Failure info
-                    "failure_reason": reason or "no_unit_available_or_feasible",
-                }
-                if isinstance(debug, dict):
-                    decision_row.update(
-                        {f"policy_{k}": v for k, v in debug.items()}
-                    )
-                self.metrics["decisions"].append(decision_row)
+                retry = int(call.get("_retries", 0)) + 1
+                call["_retries"] = retry
+
+                # If we've exceeded max wait or retries, log ONE failure and abandon
+                give_up = (queue_delay >= max_wait_min) or (
+                    max_retries and retry >= max_retries
+                )
+
+                if give_up:
+                    reason = None
+                    if isinstance(debug, dict):
+                        reason = debug.get("reason")
+                    decision_row = {
+                        "tmin": float(self.t),
+                        "call_id": call["id"],
+                        "call_zone": call.get("zone"),
+                        "call_area": call.get("call_area"),
+                        "call_urban_rural": call.get("urban_rural"),
+                        "call_risk_score": call.get("risk_score"),
+                        "call_severity_bucket": call.get("severity_bucket"),
+                        "call_preferred_unit_type": call.get("preferred_unit_type"),
+                        "call_units_needed": units_needed,
+                        # No unit assigned
+                        "unit": None,
+                        "unit_type": None,
+                        "unit_zone": None,
+                        "unit_area": None,
+                        "unit_station": None,
+                        "resp_min": float("inf"),
+                        "queue_delay_min": float(queue_delay),
+                        "unit_will_transport": False,
+                        "call_transport_flag": bool(transport_flag),
+                        "busy_total_min": 0.0,
+                        # Coverage snapshot
+                        **cov,
+                        "idle_units_in_call_muni_before": idle_units_in_call_muni_before,
+                        # Risk flags
+                        "call_is_high": bool(call_is_high),
+                        "call_is_low": bool(call_is_low),
+                        # Failure info
+                        "failure_reason": reason or "no_unit_available_or_feasible",
+                    }
+                    if isinstance(debug, dict):
+                        decision_row.update(
+                            {f"policy_{k}": v for k, v in debug.items()}
+                        )
+                    self.metrics["decisions"].append(decision_row)
+                    self.metrics["missed_calls"] += remaining
+                    abandoned = True
+                else:
+                    call["_assigned"] = assigned + local_assigned
+                    call["_queued_reason"] = debug if isinstance(debug, dict) else None
+                    scheduled_retry = True
                 break
 
             # Successful assignment
@@ -602,12 +624,10 @@ class DES:
             remaining -= 1
 
         total_assigned = assigned + local_assigned
-        if total_assigned < units_needed:
-            retry = call.get("_retries", 0)
-            if retry < config.MAX_QUEUE_RETRIES:
-                call["_retries"] = retry + 1
-                call["_assigned"] = total_assigned
-                # Simple retry after 1 minute; configurable if needed
-                self.schedule(self.t + 1.0, "call", **call)
+        if total_assigned < units_needed and not abandoned:
+            if scheduled_retry:
+                # retry_interval already configured above
+                self.schedule(self.t + retry_interval, "call", **call)
             else:
+                # Safety: if we reach here without scheduling, treat as missed
                 self.metrics["missed_calls"] += (units_needed - total_assigned)

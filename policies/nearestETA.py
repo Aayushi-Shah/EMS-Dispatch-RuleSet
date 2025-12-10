@@ -70,19 +70,6 @@ class NearestETAPolicy(DispatchPolicy):
             best_unit = feasible[0]
 
         # 3) Log ETA structure for ΔETA analysis (only when we have a choice).
-        try:
-            scenario_name = getattr(self, "scenario_name", "unknown")
-            if len(feasible) >= 2 and eta_by_unit:
-                log_delta_eta_choice(
-                    scenario=scenario_name,
-                    call=call,
-                    nearest_unit=best_unit,
-                    candidate_units=feasible,
-                    eta_by_unit=eta_by_unit,
-                    unit_id_field="name",
-                )
-        except Exception:
-            # Never kill the sim due to logging
-            pass
+        # Disabled to avoid generating ΔETA artifact files.
 
         return best_unit

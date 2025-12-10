@@ -16,6 +16,7 @@ from .base import (
 from policies.rule_templates import (
     prefer_bls_for_low_priority,                  # R1
     protect_last_unit_in_muni_for_low_priority,   # R2 (new)
+    reserve_als_for_high_priority,                # R3: ALS reservation for highs
 )
 
 # -------------------------------------------------------------------
@@ -83,6 +84,7 @@ def _apply_rule_sequence(
     eta_near: float,
     k_minutes: float,
     rules: Sequence[str],
+    reserve_als_min: int = 1,
 ) -> CandidateLike:
     """
     Apply a sequence of rules (by name: "r1", "r2") on top of nearest ETA.
@@ -120,6 +122,17 @@ def _apply_rule_sequence(
                 k_minutes=k_minutes,
             )
 
+        elif r_lower in ("r3", "reserve_als"):
+            new_u = reserve_als_for_high_priority(
+                call=call,
+                candidates=feasible,
+                sim_state=sim_state,
+                u_near=chosen,
+                eta_near=eta_near,
+                k_minutes=k_minutes,
+                reserve_als_min=reserve_als_min,
+            )
+
         else:
             # Unknown rule label -> skip
             continue
@@ -145,23 +158,7 @@ def _log_delta_eta(
     """
     Centralized ΔETA logging: only if we have at least 2 feasible units.
     """
-    if len(feasible) < 2 or not eta_by_unit:
-        return
-
-    scenario_name = getattr(self_policy, "scenario_name", "unknown")
-
-    log_delta_eta_choice(
-        scenario=scenario_name,
-        call=call,
-        nearest_unit=u_near,
-        candidate_units=feasible,
-        eta_by_unit={
-            getattr(u, "name", None): eta_by_unit.get(getattr(u, "name", None))
-            for u in feasible
-            if getattr(u, "name", None) in eta_by_unit
-        },
-        unit_id_field="name",
-    )
+    # Disabled to avoid generating ΔETA artifact files.
 
 
 # -------------------------------------------------------------------
@@ -270,6 +267,52 @@ class NearestETAR1R2Policy(DispatchPolicy):
             eta_near=eta_near,
             k_minutes=self.k_minutes,
             rules=["r1", "r2"],
+        )
+
+        _log_delta_eta(self, call, feasible, u_near, eta_by_unit)
+        return chosen
+
+
+class NearestETAReserveALSPolicy(DispatchPolicy):
+    """
+    nearest_eta_reserve_als:
+      - baseline nearest ETA
+      - plus R3: reserve at least `reserve_als_min` idle ALS globally for highs.
+        For low/medium calls that do NOT explicitly request ALS:
+          if nearest is ALS and idle ALS <= reserve_als_min, try non-ALS within +K.
+    """
+    name = "nearest_eta_reserve_als"
+
+    def __init__(
+        self,
+        *args,
+        k_minutes: float = K_MINUTES_DEFAULT,
+        reserve_als_min: int = 1,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.k_minutes = float(k_minutes)
+        self.reserve_als_min = int(reserve_als_min)
+
+    def choose_unit(
+        self,
+        call: CallLike,
+        candidates: Sequence[CandidateLike],
+        sim_state: SimStateLike,
+    ) -> CandidateLike:
+        feasible, u_near, eta_near, eta_by_unit = _compute_feasible_and_etas(
+            call, candidates, sim_state
+        )
+
+        chosen = _apply_rule_sequence(
+            call=call,
+            sim_state=sim_state,
+            feasible=feasible,
+            u_near=u_near,
+            eta_near=eta_near,
+            k_minutes=self.k_minutes,
+            rules=["reserve_als"],
+            reserve_als_min=self.reserve_als_min,
         )
 
         _log_delta_eta(self, call, feasible, u_near, eta_by_unit)

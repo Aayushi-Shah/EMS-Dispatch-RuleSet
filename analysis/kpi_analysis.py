@@ -22,6 +22,7 @@ def compute_high_risk_response_stats(
     High-risk = call_is_high == True (boolean from DES).
 
     Only consider rows where a unit was actually assigned and resp_min is finite.
+    Queue delay is added to response to reflect total time from call to arrival.
     """
     if "unit" not in df.columns or "resp_min" not in df.columns:
         return {
@@ -55,18 +56,20 @@ def compute_high_risk_response_stats(
             "high_mean": np.nan,
             "high_p50": np.nan,
             "high_p90": np.nan,
-            "high_p99": np.nan,
-            "high_pct_over_threshold": np.nan,
-        }
+        "high_p99": np.nan,
+        "high_pct_over_threshold": np.nan,
+    }
 
-    resp = df_high["resp_min"]
+    # Total response = queue delay + travel/scene response
+    queue_delay = df_high["queue_delay_min"] if "queue_delay_min" in df_high.columns else 0.0
+    resp_total = df_high["resp_min"] + queue_delay.fillna(0.0)
     stats = {
-        "high_n": int(len(resp)),
-        "high_mean": float(resp.mean()),
-        "high_p50": float(resp.quantile(0.50)),
-        "high_p90": float(resp.quantile(0.90)),
-        "high_p99": float(resp.quantile(0.99)),
-        "high_pct_over_threshold": float((resp > threshold_min).mean()),
+        "high_n": int(len(resp_total)),
+        "high_mean": float(resp_total.mean()),
+        "high_p50": float(resp_total.quantile(0.50)),
+        "high_p90": float(resp_total.quantile(0.90)),
+        "high_p99": float(resp_total.quantile(0.99)),
+        "high_pct_over_threshold": float((resp_total > threshold_min).mean()),
     }
     return stats
 
